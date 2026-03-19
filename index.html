@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TengTrip">
+<title>TengTrip</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0f1a;
+  --surface: #111827;
+  --card: #0f172a;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --accent-dim: #1e40af;
+  --danger: #ef4444;
+  --danger-dim: #7f1d1d;
+  --success: #10b981;
+  --warn: #f59e0b;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: 480px; margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; }
+input, select, textarea, button { font-family: inherit; }
+
+/* Header */
+.header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
+.header-top { display: flex; align-items: center; justify-content: space-between; }
+.logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent); }
+.trip-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; background: var(--accent-dim); color: var(--accent); }
+.trip-name { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+/* Nav */
+.nav { display: flex; border-bottom: 1px solid var(--border); }
+.nav button { flex: 1; padding: 10px 0; background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid transparent; }
+.nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Quick Entry */
+.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); }
+.input-row { display: flex; gap: 8px; }
+.main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
+.main-input:disabled { opacity: 0.5; }
+.add-btn { width: 44px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 20px; cursor: pointer; font-weight: 700; }
+.add-btn:disabled { opacity: 0.4; }
+
+/* Preview */
+.preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.preview-amount { font-weight: 700; font-size: 14px; color: var(--accent); }
+.preview-sgd { font-size: 12px; color: var(--success); }
+.preview-card { font-size: 10px; padding: 2px 6px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
+.preview-cat { font-size: 10px; padding: 2px 6px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
+.preview-desc { font-size: 12px; color: var(--text-dim); }
+
+/* Claim prompt */
+.claim-prompt { margin-top: 10px; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
+.claim-text { font-size: 13px; color: var(--text); display: block; margin-bottom: 10px; }
+.claim-amount { font-weight: 700; color: var(--accent); }
+.claim-buttons { display: flex; gap: 8px; }
+.claim-yes { flex: 1; padding: 10px; background: var(--warn); border: none; border-radius: 6px; color: #000; font-size: 13px; font-weight: 600; cursor: pointer; }
+.claim-no { flex: 1; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); font-size: 13px; cursor: pointer; }
+
+/* Day header */
+.day-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 6px; border-top: 1px solid var(--border); }
+.day-date { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.day-total { font-size: 12px; font-weight: 600; color: var(--accent); }
+
+/* Expense item */
+.expense-item { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; gap: 8px; transition: background 0.15s; }
+.expense-item:active { background: var(--surface); }
+.expense-left { flex: 1; min-width: 0; }
+.expense-desc { font-size: 13px; color: var(--text); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.expense-meta { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.tag { font-size: 9px; padding: 1px 5px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
+.tag-cat { font-size: 9px; padding: 1px 5px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
+.tag-claim { font-size: 9px; padding: 1px 5px; background: #2e2a1a; border-radius: 3px; color: var(--warn); }
+.expense-right { text-align: right; flex-shrink: 0; }
+.expense-amount { font-size: 13px; font-weight: 600; color: var(--text); display: block; }
+.expense-sgd { font-size: 10px; color: var(--text-muted); display: block; }
+.delete-btn { background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px 8px; flex-shrink: 0; border-radius: 4px; }
+
+/* Deleted item */
+.expense-deleted { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: rgba(127,29,29,0.12); }
+.expense-deleted span { opacity: 0.5; text-decoration: line-through; font-size: 13px; }
+.undo-btn { background: var(--accent); border: none; color: #fff; font-size: 11px; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+
+/* Edit mode */
+.expense-edit { padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.edit-grid { display: flex; flex-direction: column; gap: 6px; }
+.edit-input { padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
+.edit-select { padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; width: 100%; }
+.edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+.save-btn { padding: 6px 16px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; }
+.cancel-btn { padding: 6px 16px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-dim); font-size: 11px; cursor: pointer; }
+.edit-claim-label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+
+/* Dashboard */
+.dashboard { padding: 16px; }
+.stat-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border-radius: 8px; padding: 14px; text-align: center; border: 1px solid var(--border); }
+.stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; }
+.stat-value { font-size: 20px; font-weight: 700; color: var(--text); }
+.stat-sub { font-size: 11px; color: var(--success); margin-top: 4px; }
+.breakdown { margin-top: 16px; background: var(--surface); border-radius: 8px; padding: 14px; border: 1px solid var(--border); }
+.breakdown-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 10px; }
+.breakdown-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
+.breakdown-label { font-size: 12px; color: var(--text-dim); }
+.breakdown-value { font-size: 12px; font-weight: 600; color: var(--text); }
+
+/* Cards manager */
+.card-manager { padding: 16px; }
+.section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.card-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
+.card-row .name { flex: 1; font-size: 12px; }
+.card-row .shortcut { font-size: 11px; color: var(--accent); background: var(--accent-dim); padding: 2px 6px; border-radius: 3px; }
+.card-row .auto { font-size: 10px; color: var(--text-muted); width: 60px; text-align: center; }
+.card-row .remove { background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; }
+.add-card-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.add-card-row input { padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
+.add-card-row .name-input { flex: 1; min-width: 100px; }
+.add-card-row .shortcut-input { width: 80px; }
+.add-card-check { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
+.add-card-btn { padding: 8px 12px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; }
+.save-cards-btn { margin-top: 12px; padding: 10px 20px; background: var(--success); border: none; border-radius: 6px; color: #fff; font-size: 12px; cursor: pointer; width: 100%; }
+
+/* Backup */
+.backup-section { margin-top: 24px; padding: 0 16px; }
+.backup-buttons { display: flex; gap: 8px; margin-bottom: 8px; }
+.backup-btn { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--accent); font-size: 12px; cursor: pointer; }
+.backup-status { font-size: 12px; color: var(--success); margin-bottom: 8px; }
+.backup-textarea { width: 100%; min-height: 80px; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; resize: vertical; }
+.restore-btn { margin-top: 8px; padding: 10px 20px; background: var(--warn); border: none; border-radius: 6px; color: #000; font-size: 12px; cursor: pointer; width: 100%; font-weight: 600; }
+
+/* History */
+.past-trip { display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--surface); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
+.past-trip-name { font-size: 13px; font-weight: 600; }
+.past-trip-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.load-btn { padding: 6px 14px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; }
+.new-trip-btn { width: 100%; padding: 14px; background: var(--surface); border: 1px dashed var(--border); border-radius: 8px; color: var(--text-dim); font-size: 13px; cursor: pointer; margin-top: 12px; }
+
+/* Setup */
+.setup-card { background: var(--surface); border-radius: 12px; padding: 24px; border: 1px solid var(--border); margin: 16px; }
+.setup-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+.setup-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; display: block; margin-top: 14px; }
+.setup-input { width: 100%; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; }
+.type-toggle { display: flex; gap: 8px; }
+.type-btn { flex: 1; padding: 10px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text-dim); }
+.type-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.setup-save { width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 24px; }
+.setup-save:disabled { opacity: 0.4; }
+
+/* Bottom actions */
+.bottom-actions { display: flex; gap: 8px; padding: 20px 16px; }
+.export-btn { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--accent); font-size: 12px; cursor: pointer; }
+.end-trip-btn { flex: 1; padding: 12px; background: var(--danger-dim); border: 1px solid rgba(239,68,68,0.19); border-radius: 8px; color: var(--danger); font-size: 12px; cursor: pointer; }
+
+/* CSV export area */
+.csv-area { margin-top: 8px; padding: 0 16px; }
+.csv-textarea { width: 100%; min-height: 120px; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 11px; resize: vertical; }
+.copy-csv-btn { margin-top: 6px; padding: 10px 20px; background: var(--success); border: none; border-radius: 6px; color: #fff; font-size: 12px; cursor: pointer; width: 100%; }
+
+.empty { text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <h1 class="logo">TengTrip</h1>
+      <span class="trip-badge" id="trip-badge"></span>
+    </div>
+    <div class="trip-name" id="trip-name"></div>
+  </div>
+
+  <!-- Nav -->
+  <div class="nav" id="nav">
+    <button class="active" data-view="expenses">Expenses</button>
+    <button data-view="dashboard">Summary</button>
+    <button data-view="cards">Cards</button>
+    <button data-view="history">History</button>
+  </div>
+
+  <!-- Views -->
+  <div id="view-expenses"></div>
+  <div id="view-dashboard" class="hidden"></div>
+  <div id="view-cards" class="hidden"></div>
+  <div id="view-history" class="hidden"></div>
+  <div id="view-setup" class="hidden"></div>
+</div>
+
+<script>
+// ─── Data ──────────────────────────────────────────────
+const DEFAULT_CARDS = [
+  { id:"1", name:"Amaze", shortcut:"amaze", autoCalc:true },
+  { id:"2", name:"Chocolate Finance", shortcut:"cf", autoCalc:true },
+  { id:"3", name:"Citibank Premier Miles", shortcut:"pm", autoCalc:false },
+  { id:"4", name:"Citibank Prestige", shortcut:"prestige", autoCalc:false },
+  { id:"5", name:"DBS Altitude Amex", shortcut:"altitude", autoCalc:false },
+  { id:"6", name:"DBS WWMC", shortcut:"wwmc", autoCalc:false },
+  { id:"7", name:"DBS Yuu", shortcut:"yuu", autoCalc:false },
+  { id:"8", name:"UOB KrisFlyer", shortcut:"krisflyer", autoCalc:false },
+  { id:"9", name:"UOB Ladies", shortcut:"ladies", autoCalc:false },
+  { id:"10", name:"UOB PPV", shortcut:"ppv", autoCalc:false },
+  { id:"11", name:"UOB PRVI", shortcut:"prvi", autoCalc:false },
+  { id:"12", name:"UOB VS", shortcut:"vs", autoCalc:false },
+  { id:"13", name:"YouTrip", shortcut:"youtrip", autoCalc:true },
+  { id:"14", name:"Cash", shortcut:"cash", autoCalc:false },
+];
+
+const DEFAULT_TRIP = { id:"us-mar-2026", name:"US Work Trip Mar 2026", currency:"USD", type:"work", createdAt:Date.now() };
+
+const CATEGORIES = [
+  { name:"Transport", keywords:["uber","grab","taxi","cab","lyft","bus","train","mrt","ferry","subway","metro","transit","ride"] },
+  { name:"Food & Drink", keywords:["lunch","dinner","breakfast","brunch","coffee","cafe","restaurant","eat","meal","food","bar","drinks","supper"] },
+  { name:"Groceries", keywords:["grocery","groceries","supermarket","market","target","walmart","costco","fairprice","cold storage"] },
+  { name:"Shopping", keywords:["shop","mall","store","buy","purchase","outlet"] },
+  { name:"Accommodation", keywords:["hotel","hostel","airbnb","lodge","resort","inn","stay","room"] },
+  { name:"Activities", keywords:["ticket","tickets","museum","tour","show","attraction","entry","admission","park"] },
+  { name:"Others", keywords:[] },
+];
+
+// ─── State ─────────────────────────────────────────────
+let state = {
+  trip: null,
+  expenses: [],
+  cards: DEFAULT_CARDS,
+  pastTrips: [],
+  currentView: "expenses",
+  pendingExpense: null,
+  deletedIds: {},
+  editingId: null,
+  showCsv: false,
+  showRestore: false,
+};
+const deleteTimers = {};
+
+// ─── Storage ───────────────────────────────────────────
+function load(key, fallback) {
+  try { const v = localStorage.getItem("tengtrip-" + key); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+}
+function save(key, value) {
+  try { localStorage.setItem("tengtrip-" + key, JSON.stringify(value)); } catch(e) { console.error(e); }
+}
+function loadState() {
+  state.trip = load("trip", null);
+  state.expenses = load("expenses", []);
+  state.cards = load("cards", DEFAULT_CARDS);
+  state.pastTrips = load("past-trips", []);
+  if (!state.trip) { state.trip = DEFAULT_TRIP; save("trip", DEFAULT_TRIP); }
+}
+function persist() {
+  save("trip", state.trip);
+  save("expenses", state.expenses);
+  save("cards", state.cards);
+  save("past-trips", state.pastTrips);
+}
+
+// ─── Helpers ───────────────────────────────────────────
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function todayStr() { return new Date().toISOString().split("T")[0]; }
+function formatDate(ds) {
+  const d = new Date(ds);
+  return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()] + ", " + d.getDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+}
+function detectCategory(desc) {
+  const l = desc.toLowerCase();
+  for (const c of CATEGORIES) { if (c.name==="Others") continue; for (const k of c.keywords) { if (l.includes(k)) return c.name; } }
+  return "Others";
+}
+function parseInput(text, cards) {
+  text = text.trim(); if (!text) return null;
+  const amtRe = /\b(\d+(?:\.\d{1,2})?)\b/g;
+  const amounts = []; let m;
+  while ((m = amtRe.exec(text)) !== null) amounts.push({ value:parseFloat(m[1]), index:m.index, length:m[0].length });
+  if (!amounts.length) return null;
+  const sorted = [...cards].sort((a,b) => b.shortcut.length - a.shortcut.length);
+  let foundCard=null, cardIdx=-1, cardLen=0;
+  for (const c of sorted) {
+    const re = new RegExp("\\b" + c.shortcut.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "\\b", "i");
+    const cm = text.match(re);
+    if (cm) { foundCard=c; cardIdx=cm.index; cardLen=cm[0].length; break; }
+  }
+  const fa = amounts[0];
+  let sgd = null;
+  if (amounts.length >= 2 && foundCard && foundCard.autoCalc) sgd = amounts[1].value;
+  else if (amounts.length >= 2 && !foundCard) sgd = amounts[1].value;
+  let desc = text;
+  const removals = [{ index:fa.index, length:fa.length }];
+  if (sgd !== null && amounts.length >= 2) removals.push({ index:amounts[1].index, length:amounts[1].length });
+  if (cardIdx >= 0) removals.push({ index:cardIdx, length:cardLen });
+  removals.sort((a,b) => b.index - a.index);
+  for (const r of removals) desc = desc.slice(0,r.index) + desc.slice(r.index+r.length);
+  desc = desc.replace(/\s+/g," ").trim();
+  return { amount:fa.value, sgdAmount:sgd, card:foundCard, description:desc, category:detectCategory(desc) };
+}
+function esc(s) { const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+
+// ─── Render ────────────────────────────────────────────
+function render() {
+  const t = state.trip;
+  // Header
+  document.getElementById("trip-badge").textContent = t ? (t.type==="work" ? "Work" : "Personal") : "";
+  document.getElementById("trip-name").textContent = t ? t.name + " · " + t.currency : "";
+  document.getElementById("nav").classList.toggle("hidden", !t);
+  // Nav active
+  document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("active", b.dataset.view === state.currentView));
+  // Views
+  ["expenses","dashboard","cards","history","setup"].forEach(v => {
+    const el = document.getElementById("view-"+v);
+    if (el) el.classList.toggle("hidden", state.currentView !== v);
+  });
+  if (!t && state.currentView !== "setup" && state.currentView !== "history") { state.currentView = "setup"; render(); return; }
+  if (state.currentView === "expenses") renderExpenses();
+  else if (state.currentView === "dashboard") renderDashboard();
+  else if (state.currentView === "cards") renderCards();
+  else if (state.currentView === "history") renderHistory();
+  else if (state.currentView === "setup") renderSetup();
+}
+
+function renderExpenses() {
+  const t = state.trip; if (!t) return;
+  const c = t.currency;
+  const active = state.expenses.filter(e => !state.deletedIds[e.id]);
+  // Group by date
+  const grouped = {};
+  const sorted = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  sorted.forEach(e => { if (!grouped[e.date]) grouped[e.date]=[]; grouped[e.date].push(e); });
+
+  let html = '';
+  // Quick entry
+  html += '<div class="quick-entry">';
+  html += '<div class="input-row">';
+  html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 55.95 uber to nyse prestige" ${state.pendingExpense ? 'disabled' : ''}>`;
+  html += `<button class="add-btn" id="add-btn" ${state.pendingExpense ? 'disabled' : ''}>+</button>`;
+  html += '</div>';
+  // Claim prompt
+  if (state.pendingExpense) {
+    const pe = state.pendingExpense;
+    html += '<div class="claim-prompt">';
+    html += `<span class="claim-text"><span class="claim-amount">${c} ${pe.amount.toFixed(2)}</span> ${esc(pe.description)} — Claimable?</span>`;
+    html += '<div class="claim-buttons">';
+    html += '<button class="claim-yes" id="claim-yes">Yes</button>';
+    html += '<button class="claim-no" id="claim-no">No</button>';
+    html += '</div></div>';
+  }
+  // Preview
+  html += '<div class="preview" id="preview"></div>';
+  html += '</div>';
+
+  // Expenses list
+  if (Object.keys(grouped).length === 0) {
+    html += '<div class="empty">No expenses yet. Start typing above.</div>';
+  } else {
+    for (const [date, exps] of Object.entries(grouped)) {
+      const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s+e.amount, 0);
+      html += `<div class="day-header"><span class="day-date">${formatDate(date)}</span><span class="day-total">${c} ${dayTotal.toFixed(2)}</span></div>`;
+      for (const e of exps) {
+        if (state.deletedIds[e.id]) {
+          html += `<div class="expense-deleted"><span>${esc(e.description)}</span><button class="undo-btn" data-undo="${e.id}">Undo</button></div>`;
+          continue;
+        }
+        if (state.editingId === e.id) {
+          html += renderEditForm(e);
+          continue;
+        }
+        html += `<div class="expense-item" data-edit="${e.id}">`;
+        html += '<div class="expense-left">';
+        html += `<span class="expense-desc">${esc(e.description || "—")}</span>`;
+        html += '<div class="expense-meta">';
+        if (e.cardName) html += `<span class="tag">${esc(e.cardName)}</span>`;
+        html += `<span class="tag-cat">${esc(e.category)}</span>`;
+        if (e.claimable) html += '<span class="tag-claim">Claim</span>';
+        html += '</div></div>';
+        html += '<div class="expense-right">';
+        html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
+        if (e.sgdAmount) html += `<span class="expense-sgd">SGD ${e.sgdAmount.toFixed(2)}</span>`;
+        html += '</div>';
+        html += `<button class="delete-btn" data-delete="${e.id}">×</button>`;
+        html += '</div>';
+      }
+    }
+  }
+
+  // Bottom actions
+  if (state.expenses.length > 0) {
+    html += '<div class="bottom-actions">';
+    html += '<button class="export-btn" id="toggle-csv">Export CSV</button>';
+    html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
+    html += '</div>';
+    if (state.showCsv) {
+      const csv = generateCsv();
+      html += '<div class="csv-area">';
+      html += `<textarea class="csv-textarea" readonly id="csv-text">${esc(csv)}</textarea>`;
+      html += '<button class="copy-csv-btn" id="copy-csv">Copy to Clipboard</button>';
+      html += '</div>';
+    }
+  }
+
+  document.getElementById("view-expenses").innerHTML = html;
+  bindExpenseEvents();
+}
+
+function renderEditForm(e) {
+  let html = '<div class="expense-edit">';
+  html += '<div class="edit-grid">';
+  html += `<input class="edit-input" id="edit-desc" value="${esc(e.description)}" placeholder="Description">`;
+  html += `<input class="edit-input" id="edit-amount" type="number" step="0.01" value="${e.amount}" placeholder="Amount">`;
+  html += `<input class="edit-input" id="edit-sgd" type="number" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
+  html += '<select class="edit-select" id="edit-card">';
+  html += '<option value="">No card</option>';
+  state.cards.forEach(c => { html += `<option value="${c.id}" ${e.card===c.id?'selected':''}>${esc(c.name)}</option>`; });
+  html += '</select>';
+  html += '<select class="edit-select" id="edit-category">';
+  CATEGORIES.forEach(c => { html += `<option value="${c.name}" ${e.category===c.name?'selected':''}>${c.name}</option>`; });
+  html += '</select>';
+  html += `<label class="edit-claim-label"><input type="checkbox" id="edit-claimable" ${e.claimable?'checked':''}> Claimable</label>`;
+  html += '</div>';
+  html += '<div class="edit-actions">';
+  html += `<button class="save-btn" id="save-edit" data-id="${e.id}">Save</button>`;
+  html += '<button class="cancel-btn" id="cancel-edit">Cancel</button>';
+  html += '</div></div>';
+  return html;
+}
+
+function bindExpenseEvents() {
+  const input = document.getElementById("expense-input");
+  const addBtn = document.getElementById("add-btn");
+  if (input) {
+    input.addEventListener("input", () => updatePreview(input.value));
+    input.addEventListener("keydown", (ev) => { if (ev.key==="Enter") { ev.preventDefault(); submitExpense(input.value); } });
+  }
+  if (addBtn) addBtn.addEventListener("click", () => { if(input) submitExpense(input.value); });
+  const cy = document.getElementById("claim-yes");
+  const cn = document.getElementById("claim-no");
+  if (cy) cy.addEventListener("click", () => resolveClaim(true));
+  if (cn) cn.addEventListener("click", () => resolveClaim(false));
+  document.querySelectorAll("[data-edit]").forEach(el => {
+    el.addEventListener("click", (ev) => {
+      if (ev.target.classList.contains("delete-btn")) return;
+      state.editingId = el.dataset.edit; render();
+    });
+  });
+  document.querySelectorAll("[data-delete]").forEach(el => {
+    el.addEventListener("click", (ev) => { ev.stopPropagation(); deleteExpense(el.dataset.delete); });
+  });
+  document.querySelectorAll("[data-undo]").forEach(el => {
+    el.addEventListener("click", () => undoDelete(el.dataset.undo));
+  });
+  const saveEdit = document.getElementById("save-edit");
+  if (saveEdit) saveEdit.addEventListener("click", () => {
+    const id = saveEdit.dataset.id;
+    const idx = state.expenses.findIndex(e => e.id === id);
+    if (idx >= 0) {
+      const cardId = document.getElementById("edit-card").value;
+      state.expenses[idx] = {
+        ...state.expenses[idx],
+        description: document.getElementById("edit-desc").value,
+        amount: parseFloat(document.getElementById("edit-amount").value) || state.expenses[idx].amount,
+        sgdAmount: document.getElementById("edit-sgd").value ? parseFloat(document.getElementById("edit-sgd").value) : null,
+        card: cardId || null,
+        cardName: state.cards.find(c=>c.id===cardId)?.name || "Unknown",
+        category: document.getElementById("edit-category").value,
+        claimable: document.getElementById("edit-claimable").checked,
+      };
+      persist();
+    }
+    state.editingId = null; render();
+  });
+  const cancelEdit = document.getElementById("cancel-edit");
+  if (cancelEdit) cancelEdit.addEventListener("click", () => { state.editingId = null; render(); });
+  const toggleCsv = document.getElementById("toggle-csv");
+  if (toggleCsv) toggleCsv.addEventListener("click", () => { state.showCsv = !state.showCsv; render(); });
+  const copyCsv = document.getElementById("copy-csv");
+  if (copyCsv) copyCsv.addEventListener("click", () => {
+    const ta = document.getElementById("csv-text");
+    navigator.clipboard.writeText(ta.value).then(() => { copyCsv.textContent = "Copied!"; setTimeout(() => { copyCsv.textContent = "Copy to Clipboard"; }, 2000); }).catch(() => { ta.select(); });
+  });
+  const endTrip = document.getElementById("end-trip");
+  if (endTrip) endTrip.addEventListener("click", () => {
+    if (state.trip) {
+      state.pastTrips.push({ ...state.trip, expenses: state.expenses, endedAt: Date.now() });
+    }
+    state.trip = null; state.expenses = []; state.showCsv = false;
+    persist(); state.currentView = "setup"; render();
+  });
+}
+
+function updatePreview(val) {
+  const prev = document.getElementById("preview");
+  if (!prev || state.pendingExpense) return;
+  const p = parseInput(val, state.cards);
+  if (!p || !p.amount) { prev.innerHTML = ''; return; }
+  const c = state.trip.currency;
+  let h = `<span class="preview-amount">${c} ${p.amount.toFixed(2)}</span>`;
+  if (p.sgdAmount) h += `<span class="preview-sgd">≈ SGD ${p.sgdAmount.toFixed(2)}</span>`;
+  if (p.card) h += `<span class="preview-card">${esc(p.card.name)}</span>`;
+  h += `<span class="preview-cat">${p.category}</span>`;
+  if (p.description) h += `<span class="preview-desc">${esc(p.description)}</span>`;
+  prev.innerHTML = h;
+}
+
+function submitExpense(val) {
+  const p = parseInput(val, state.cards);
+  if (!p || !p.amount) return;
+  const expense = {
+    id: genId(), date: todayStr(), amount: p.amount, sgdAmount: p.sgdAmount,
+    currency: state.trip.currency, description: p.description,
+    card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
+    category: p.category, claimable: false, createdAt: Date.now(),
+  };
+  if (state.trip.type === "work") {
+    state.pendingExpense = expense;
+    render();
+  } else {
+    state.expenses.unshift(expense);
+    persist(); render();
+  }
+}
+
+function resolveClaim(claimable) {
+  if (!state.pendingExpense) return;
+  state.pendingExpense.claimable = claimable;
+  state.expenses.unshift(state.pendingExpense);
+  state.pendingExpense = null;
+  persist(); render();
+  // Focus input after claim resolved
+  setTimeout(() => { const inp = document.getElementById("expense-input"); if(inp) inp.focus(); }, 50);
+}
+
+function deleteExpense(id) {
+  state.deletedIds[id] = true;
+  if (deleteTimers[id]) clearTimeout(deleteTimers[id]);
+  deleteTimers[id] = setTimeout(() => {
+    state.expenses = state.expenses.filter(e => e.id !== id);
+    delete state.deletedIds[id]; delete deleteTimers[id];
+    persist(); render();
+  }, 4000);
+  render();
+}
+function undoDelete(id) {
+  if (deleteTimers[id]) { clearTimeout(deleteTimers[id]); delete deleteTimers[id]; }
+  delete state.deletedIds[id]; render();
+}
+
+function generateCsv() {
+  const h = ["Date","Description","Amount","Currency","SGD Amount","Card","Category","Claimable"];
+  const rows = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
+    .map(e => [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', e.amount.toFixed(2), e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||"", e.claimable?"Yes":"No"].join(","));
+  return [h.join(","), ...rows].join("\n");
+}
+
+// ─── Dashboard ─────────────────────────────────────────
+function renderDashboard() {
+  const exps = state.expenses.filter(e => !state.deletedIds[e.id]);
+  const c = state.trip.currency;
+  const totalF = exps.reduce((s,e) => s+e.amount, 0);
+  const totalS = exps.reduce((s,e) => s+(e.sgdAmount||0), 0);
+  const totalClaim = exps.filter(e=>e.claimable).reduce((s,e) => s+e.amount, 0);
+  const byCard = {}, byCat = {};
+  exps.forEach(e => { byCard[e.cardName||"Unknown"] = (byCard[e.cardName||"Unknown"]||0)+e.amount; byCat[e.category] = (byCat[e.category]||0)+e.amount; });
+
+  let h = '<div class="dashboard">';
+  h += '<div class="stat-row">';
+  h += `<div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${c} ${totalF.toFixed(2)}</div>${totalS>0?`<div class="stat-sub">≈ SGD ${totalS.toFixed(2)}</div>`:''}</div>`;
+  h += `<div class="stat-card"><div class="stat-label">Entries</div><div class="stat-value">${exps.length}</div></div>`;
+  h += `<div class="stat-card"><div class="stat-label">Claimable</div><div class="stat-value">${c} ${totalClaim.toFixed(2)}</div></div>`;
+  h += '</div>';
+
+  if (Object.keys(byCard).length) {
+    h += '<div class="breakdown"><div class="breakdown-title">By Card</div>';
+    Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => { h += `<div class="breakdown-row"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-value">${c} ${a.toFixed(2)}</span></div>`; });
+    h += '</div>';
+  }
+  if (Object.keys(byCat).length) {
+    h += '<div class="breakdown"><div class="breakdown-title">By Category</div>';
+    Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => { h += `<div class="breakdown-row"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-value">${c} ${a.toFixed(2)}</span></div>`; });
+    h += '</div>';
+  }
+  h += '</div>';
+  document.getElementById("view-dashboard").innerHTML = h;
+}
+
+// ─── Cards ─────────────────────────────────────────────
+function renderCards() {
+  let h = '<div class="card-manager"><h3 class="section-title">Payment Methods</h3>';
+  state.cards.forEach(c => {
+    h += `<div class="card-row"><span class="name">${esc(c.name)}</span><span class="shortcut">${esc(c.shortcut)}</span><span class="auto">${c.autoCalc?"SGD auto":"—"}</span><button class="remove" data-remove-card="${c.id}">×</button></div>`;
+  });
+  h += '<div class="add-card-row">';
+  h += '<input class="name-input" id="new-card-name" placeholder="Card name">';
+  h += '<input class="shortcut-input" id="new-card-shortcut" placeholder="Shortcut">';
+  h += '<label class="add-card-check"><input type="checkbox" id="new-card-auto"> SGD</label>';
+  h += '<button class="add-card-btn" id="add-card">Add</button>';
+  h += '</div>';
+  h += '<button class="save-cards-btn" id="save-cards">Save Cards</button>';
+  h += '</div>';
+
+  // Backup
+  h += '<div class="backup-section"><h3 class="section-title">Backup & Restore</h3>';
+  h += '<div class="backup-buttons">';
+  h += '<button class="backup-btn" id="copy-backup">Copy Backup</button>';
+  h += '<button class="backup-btn" id="toggle-restore">Restore</button>';
+  h += '</div>';
+  h += '<div id="backup-status"></div>';
+  if (state.showRestore) {
+    h += '<textarea class="backup-textarea" id="restore-text" placeholder="Paste backup data here..."></textarea>';
+    h += '<button class="restore-btn" id="do-restore">Restore Data</button>';
+  }
+  h += '</div>';
+
+  document.getElementById("view-cards").innerHTML = h;
+
+  // Bind
+  document.querySelectorAll("[data-remove-card]").forEach(el => {
+    el.addEventListener("click", () => { state.cards = state.cards.filter(c=>c.id!==el.dataset.removeCard); persist(); render(); });
+  });
+  document.getElementById("add-card")?.addEventListener("click", () => {
+    const n = document.getElementById("new-card-name").value.trim();
+    const s = document.getElementById("new-card-shortcut").value.trim().toLowerCase();
+    const a = document.getElementById("new-card-auto").checked;
+    if (n && s) { state.cards.push({ id:genId(), name:n, shortcut:s, autoCalc:a }); persist(); render(); }
+  });
+  document.getElementById("save-cards")?.addEventListener("click", () => { persist(); const st = document.getElementById("backup-status"); if(st) { st.textContent="Cards saved!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2000); } });
+  document.getElementById("copy-backup")?.addEventListener("click", () => {
+    const data = JSON.stringify({ trip:state.trip, expenses:state.expenses, cards:state.cards, pastTrips:state.pastTrips, version:1, exportedAt:Date.now() });
+    navigator.clipboard.writeText(data).then(() => {
+      const st = document.getElementById("backup-status"); if(st) { st.textContent="Copied to clipboard!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
+    }).catch(() => { state.showRestore=true; render(); const ta=document.getElementById("restore-text"); if(ta) ta.value=data; });
+  });
+  document.getElementById("toggle-restore")?.addEventListener("click", () => { state.showRestore=!state.showRestore; render(); });
+  document.getElementById("do-restore")?.addEventListener("click", () => {
+    const st = document.getElementById("backup-status");
+    try {
+      const data = JSON.parse(document.getElementById("restore-text").value);
+      if (!data.version) throw new Error("Invalid");
+      if (data.trip) state.trip = data.trip;
+      if (data.expenses) state.expenses = data.expenses;
+      if (data.cards) state.cards = data.cards;
+      if (data.pastTrips) state.pastTrips = data.pastTrips;
+      state.showRestore = false;
+      persist(); render();
+      if(st) { st.textContent="Restored!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
+    } catch { if(st) { st.textContent="Invalid backup data"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); } }
+  });
+}
+
+// ─── History ───────────────────────────────────────────
+function renderHistory() {
+  let h = '<div style="padding:16px"><h3 class="section-title">Past Trips</h3>';
+  if (!state.pastTrips.length) {
+    h += '<div class="empty">No past trips.</div>';
+  } else {
+    state.pastTrips.forEach(pt => {
+      h += `<div class="past-trip"><div><div class="past-trip-name">${esc(pt.name)}</div><div class="past-trip-meta">${esc(pt.currency)} · ${pt.expenses?.length||0} expenses · ${pt.type}</div></div><button class="load-btn" data-load="${pt.id}">Reopen</button></div>`;
+    });
+  }
+  if (!state.trip) h += '<button class="new-trip-btn" id="new-trip-btn">+ New Trip</button>';
+  h += '</div>';
+  document.getElementById("view-history").innerHTML = h;
+
+  document.querySelectorAll("[data-load]").forEach(el => {
+    el.addEventListener("click", () => {
+      const pt = state.pastTrips.find(p=>p.id===el.dataset.load);
+      if (pt) {
+        state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, createdAt:pt.createdAt };
+        state.expenses = pt.expenses || [];
+        state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
+        persist(); state.currentView="expenses"; render();
+      }
+    });
+  });
+  document.getElementById("new-trip-btn")?.addEventListener("click", () => { state.currentView="setup"; render(); });
+}
+
+// ─── Setup ─────────────────────────────────────────────
+function renderSetup() {
+  let h = '<div class="setup-card">';
+  h += '<h2 class="setup-title">New Trip</h2>';
+  h += '<label class="setup-label">Trip Name</label>';
+  h += '<input class="setup-input" id="setup-name" placeholder="e.g. US Work Trip Mar 2026">';
+  h += '<label class="setup-label">Foreign Currency</label>';
+  h += '<input class="setup-input" id="setup-currency" placeholder="USD" maxlength="3">';
+  h += '<label class="setup-label">Trip Type</label>';
+  h += '<div class="type-toggle"><button class="type-btn active" id="type-personal" data-type="personal">Personal</button><button class="type-btn" id="type-work" data-type="work">Work</button></div>';
+  h += '<button class="setup-save" id="setup-save">Start Trip</button>';
+  h += '</div>';
+  document.getElementById("view-setup").innerHTML = h;
+
+  let tripType = "personal";
+  document.querySelectorAll(".type-btn").forEach(b => {
+    b.addEventListener("click", () => {
+      tripType = b.dataset.type;
+      document.querySelectorAll(".type-btn").forEach(x => x.classList.toggle("active", x===b));
+    });
+  });
+  document.getElementById("setup-save")?.addEventListener("click", () => {
+    const name = document.getElementById("setup-name").value.trim();
+    const cur = document.getElementById("setup-currency").value.trim().toUpperCase();
+    if (!name || !cur) return;
+    state.trip = { id:genId(), name, currency:cur, type:tripType, createdAt:Date.now() };
+    state.expenses = [];
+    persist(); state.currentView = "expenses"; render();
+  });
+}
+
+// ─── Nav binding ───────────────────────────────────────
+document.querySelectorAll(".nav button").forEach(b => {
+  b.addEventListener("click", () => { state.currentView = b.dataset.view; state.editingId = null; state.showCsv = false; render(); });
+});
+
+// ─── Init ──────────────────────────────────────────────
+loadState();
+render();
+</script>
+</body>
+</html>
