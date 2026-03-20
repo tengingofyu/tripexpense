@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
@@ -25,7 +25,7 @@
   --warn: #f59e0b;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: 480px; margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: min(480px, 100vw); margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 input, select, textarea, button { font-family: inherit; }
 
 /* Header */
@@ -41,12 +41,10 @@ input, select, textarea, button { font-family: inherit; }
 .nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Quick Entry */
-.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); }
+.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; background: var(--bg); }
 .input-row { display: flex; gap: 8px; }
 .main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
 .main-input:disabled { opacity: 0.5; }
-.add-btn { width: 44px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 20px; cursor: pointer; font-weight: 700; }
-.add-btn:disabled { opacity: 0.4; }
 
 /* Preview */
 .preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
@@ -72,6 +70,16 @@ input, select, textarea, button { font-family: inherit; }
 /* Expense item */
 .expense-item { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; gap: 8px; transition: background 0.15s; }
 .expense-item:active { background: var(--surface); }
+.drag-handle { color: var(--text-muted); font-size: 18px; cursor: grab; padding: 4px 0 4px 4px; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0; line-height: 1; }
+.drag-handle:active { cursor: grabbing; }
+.expense-item.dragging { opacity: 0.4; background: var(--surface); }
+.expense-item.drag-over { border-top: 2px solid var(--accent); margin-top: -2px; }
+.day-header.drag-over { border-bottom: 2px solid var(--accent); }
+
+/* Swipe to delete */
+.swipe-container { position: relative; overflow: hidden; }
+.swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; }
+.swipe-container .expense-item { position: relative; z-index: 1; background: var(--bg); transition: none; }
 .expense-left { flex: 1; min-width: 0; }
 .expense-desc { font-size: 13px; color: var(--text); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .expense-meta { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
@@ -81,7 +89,6 @@ input, select, textarea, button { font-family: inherit; }
 .expense-right { text-align: right; flex-shrink: 0; }
 .expense-amount { font-size: 13px; font-weight: 600; color: var(--text); display: block; }
 .expense-sgd { font-size: 10px; color: var(--text-muted); display: block; }
-.delete-btn { background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px 8px; flex-shrink: 0; border-radius: 4px; }
 
 /* Deleted item */
 .expense-deleted { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: rgba(127,29,29,0.12); }
@@ -238,6 +245,8 @@ let state = {
   editingId: null,
   showCsv: false,
   showRestore: false,
+  isDragging: false,
+  isSwiping: false,
 };
 const deleteTimers = {};
 
@@ -332,7 +341,7 @@ function renderExpenses() {
   const active = state.expenses.filter(e => !state.deletedIds[e.id]);
   // Group by date
   const grouped = {};
-  const sorted = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  const sorted = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || (a.sortOrder||0) - (b.sortOrder||0));
   sorted.forEach(e => { if (!grouped[e.date]) grouped[e.date]=[]; grouped[e.date].push(e); });
 
   let html = '';
@@ -340,7 +349,6 @@ function renderExpenses() {
   html += '<div class="quick-entry">';
   html += '<div class="input-row">';
   html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 55.95 uber to nyse prestige" ${state.pendingExpense ? 'disabled' : ''}>`;
-  html += `<button class="add-btn" id="add-btn" ${state.pendingExpense ? 'disabled' : ''}>+</button>`;
   html += '</div>';
   // Claim prompt
   if (state.pendingExpense) {
@@ -362,7 +370,7 @@ function renderExpenses() {
   } else {
     for (const [date, exps] of Object.entries(grouped)) {
       const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s+e.amount, 0);
-      html += `<div class="day-header"><span class="day-date">${formatDate(date)}</span><span class="day-total">${c} ${dayTotal.toFixed(2)}</span></div>`;
+      html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${c} ${dayTotal.toFixed(2)}</span></div>`;
       for (const e of exps) {
         if (state.deletedIds[e.id]) {
           html += `<div class="expense-deleted"><span>${esc(e.description)}</span><button class="undo-btn" data-undo="${e.id}">Undo</button></div>`;
@@ -372,7 +380,9 @@ function renderExpenses() {
           html += renderEditForm(e);
           continue;
         }
-        html += `<div class="expense-item" data-edit="${e.id}">`;
+        html += `<div class="swipe-container" data-swipe="${e.id}">`;
+        html += `<div class="swipe-delete-bg"><span>Delete</span></div>`;
+        html += `<div class="expense-item" data-edit="${e.id}" data-id="${e.id}" data-date="${e.date}">`;
         html += '<div class="expense-left">';
         html += `<span class="expense-desc">${esc(e.description || "—")}</span>`;
         html += '<div class="expense-meta">';
@@ -384,8 +394,8 @@ function renderExpenses() {
         html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
         if (e.sgdAmount) html += `<span class="expense-sgd">SGD ${e.sgdAmount.toFixed(2)}</span>`;
         html += '</div>';
-        html += `<button class="delete-btn" data-delete="${e.id}">×</button>`;
-        html += '</div>';
+        html += `<span class="drag-handle" data-drag="${e.id}">≡</span>`;
+        html += '</div></div>';
       }
     }
   }
@@ -434,28 +444,29 @@ function renderEditForm(e) {
 
 function bindExpenseEvents() {
   const input = document.getElementById("expense-input");
-  const addBtn = document.getElementById("add-btn");
   if (input) {
     input.addEventListener("input", () => updatePreview(input.value));
     input.addEventListener("keydown", (ev) => { if (ev.key==="Enter") { ev.preventDefault(); submitExpense(input.value); } });
+    input.addEventListener("focus", () => { setTimeout(() => { input.scrollIntoView({ behavior:"smooth", block:"nearest" }); }, 300); });
   }
-  if (addBtn) addBtn.addEventListener("click", () => { if(input) submitExpense(input.value); });
   const cy = document.getElementById("claim-yes");
   const cn = document.getElementById("claim-no");
   if (cy) cy.addEventListener("click", () => resolveClaim(true));
   if (cn) cn.addEventListener("click", () => resolveClaim(false));
   document.querySelectorAll("[data-edit]").forEach(el => {
     el.addEventListener("click", (ev) => {
-      if (ev.target.classList.contains("delete-btn")) return;
+      if (ev.target.classList.contains("drag-handle")) return;
+      if (state.isDragging || state.isSwiping) return;
       state.editingId = el.dataset.edit; render();
     });
-  });
-  document.querySelectorAll("[data-delete]").forEach(el => {
-    el.addEventListener("click", (ev) => { ev.stopPropagation(); deleteExpense(el.dataset.delete); });
   });
   document.querySelectorAll("[data-undo]").forEach(el => {
     el.addEventListener("click", () => undoDelete(el.dataset.undo));
   });
+  // Drag and drop
+  initDragAndDrop();
+  // Swipe to delete
+  initSwipeToDelete();
   const saveEdit = document.getElementById("save-edit");
   if (saveEdit) saveEdit.addEventListener("click", () => {
     const id = saveEdit.dataset.id;
@@ -513,11 +524,14 @@ function updatePreview(val) {
 function submitExpense(val) {
   const p = parseInput(val, state.cards);
   if (!p || !p.amount) return;
+  // New entries go to bottom of today's group
+  const todayExps = state.expenses.filter(e => e.date === todayStr());
+  const maxOrder = todayExps.length ? Math.max(...todayExps.map(e => e.sortOrder || 0)) + 1 : 0;
   const expense = {
     id: genId(), date: todayStr(), amount: p.amount, sgdAmount: p.sgdAmount,
     currency: state.trip.currency, description: p.description,
     card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
-    category: p.category, claimable: false, createdAt: Date.now(),
+    category: p.category, claimable: false, createdAt: Date.now(), sortOrder: maxOrder,
   };
   if (state.trip.type === "work") {
     state.pendingExpense = expense;
@@ -711,6 +725,184 @@ function renderSetup() {
     state.trip = { id:genId(), name, currency:cur, type:tripType, createdAt:Date.now() };
     state.expenses = [];
     persist(); state.currentView = "expenses"; render();
+  });
+}
+
+// ─── Drag and Drop ─────────────────────────────────────
+function initDragAndDrop() {
+  let dragId = null;
+  let dragEl = null;
+  let dragClone = null;
+  let longPressTimer = null;
+  let dragStarted = false;
+
+  function startDrag(id, item, clientY) {
+    dragStarted = true;
+    state.isDragging = true;
+    item.classList.add("dragging");
+    dragClone = item.cloneNode(true);
+    dragClone.style.cssText = "position:fixed;left:8px;right:8px;width:" + item.offsetWidth + "px;z-index:1000;opacity:0.9;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
+    dragClone.style.top = (clientY - 30) + "px";
+    document.body.appendChild(dragClone);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+
+  function moveDrag(clientX, clientY) {
+    if (!dragStarted || !dragClone) return;
+    dragClone.style.top = (clientY - 30) + "px";
+    document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+    const elBelow = document.elementFromPoint(clientX, clientY);
+    if (!elBelow) return;
+    const targetItem = elBelow.closest(".expense-item[data-id]");
+    const targetDay = elBelow.closest(".day-header[data-dayheader]");
+    if (targetItem && targetItem.dataset.id !== dragId) {
+      targetItem.classList.add("drag-over");
+    } else if (targetDay) {
+      targetDay.classList.add("drag-over");
+    }
+  }
+
+  function endDrag() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (!dragStarted) { dragId = null; dragEl = null; return; }
+    const overItem = document.querySelector(".expense-item.drag-over");
+    const overDay = document.querySelector(".day-header.drag-over");
+    if (overItem && dragId) {
+      reorderExpense(dragId, overItem.dataset.id, overItem.dataset.date);
+    } else if (overDay && dragId) {
+      moveExpenseToDate(dragId, overDay.dataset.dayheader);
+    }
+    cleanup();
+  }
+
+  function cleanup() {
+    document.querySelectorAll(".dragging,.drag-over").forEach(el => { el.classList.remove("dragging"); el.classList.remove("drag-over"); });
+    if (dragClone) { dragClone.remove(); dragClone = null; }
+    dragId = null; dragEl = null; dragStarted = false;
+    setTimeout(() => { state.isDragging = false; }, 100);
+  }
+
+  document.querySelectorAll("[data-drag]").forEach(handle => {
+    // Touch events (mobile)
+    handle.addEventListener("touchstart", (ev) => {
+      const id = handle.dataset.drag;
+      const item = handle.closest(".expense-item");
+      if (!item) return;
+      dragId = id; dragEl = item; dragStarted = false;
+      longPressTimer = setTimeout(() => startDrag(id, item, ev.touches[0].clientY), 400);
+    }, { passive: true });
+
+    // Mouse events (desktop)
+    handle.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      const id = handle.dataset.drag;
+      const item = handle.closest(".expense-item");
+      if (!item) return;
+      dragId = id; dragEl = item; dragStarted = false;
+      longPressTimer = setTimeout(() => startDrag(id, item, ev.clientY), 400);
+    });
+  });
+
+  // Touch move/end
+  document.addEventListener("touchmove", (ev) => {
+    if (!dragStarted) return;
+    ev.preventDefault();
+    moveDrag(ev.touches[0].clientX, ev.touches[0].clientY);
+  }, { passive: false });
+  document.addEventListener("touchend", endDrag);
+  document.addEventListener("touchcancel", () => { if (longPressTimer) clearTimeout(longPressTimer); cleanup(); });
+
+  // Mouse move/up
+  document.addEventListener("mousemove", (ev) => {
+    if (!dragStarted) return;
+    ev.preventDefault();
+    moveDrag(ev.clientX, ev.clientY);
+  });
+  document.addEventListener("mouseup", endDrag);
+}
+
+function reorderExpense(draggedId, targetId, targetDate) {
+  // Get the visible sorted order for the target date
+  const dateExps = state.expenses.filter(e => e.date === targetDate).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+  const draggedExp = state.expenses.find(e => e.id === draggedId);
+  if (!draggedExp) return;
+
+  // Remove dragged from its current position
+  const filtered = dateExps.filter(e => e.id !== draggedId);
+  // Find target index
+  const targetIdx = filtered.findIndex(e => e.id === targetId);
+  // Insert before target
+  filtered.splice(targetIdx, 0, draggedExp);
+
+  // Update date and sortOrder
+  draggedExp.date = targetDate;
+  filtered.forEach((e, i) => { e.sortOrder = i; });
+  persist(); render();
+}
+
+function moveExpenseToDate(draggedId, targetDate) {
+  const draggedExp = state.expenses.find(e => e.id === draggedId);
+  if (!draggedExp) return;
+  const dateExps = state.expenses.filter(e => e.date === targetDate && e.id !== draggedId).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+  draggedExp.date = targetDate;
+  draggedExp.sortOrder = dateExps.length ? Math.max(...dateExps.map(e => e.sortOrder||0)) + 1 : 0;
+  persist(); render();
+}
+
+function initSwipeToDelete() {
+  const THRESHOLD = 80;
+  document.querySelectorAll("[data-swipe]").forEach(container => {
+    const id = container.dataset.swipe;
+    const item = container.querySelector(".expense-item");
+    if (!item) return;
+    let startX = 0, currentX = 0, swiping = false;
+
+    function onStart(clientX) {
+      startX = clientX; currentX = 0; swiping = true;
+      item.style.transition = "none";
+    }
+    function onMove(clientX) {
+      if (!swiping) return;
+      currentX = clientX - startX;
+      if (currentX > 0) currentX = 0; // Only allow left swipe
+      item.style.transform = "translateX(" + currentX + "px)";
+      state.isSwiping = Math.abs(currentX) > 10;
+    }
+    function onEnd() {
+      if (!swiping) return;
+      swiping = false;
+      item.style.transition = "transform 0.25s ease";
+      if (currentX < -THRESHOLD) {
+        // Swipe past threshold — delete
+        item.style.transform = "translateX(-100%)";
+        setTimeout(() => deleteExpense(id), 250);
+      } else {
+        // Snap back
+        item.style.transform = "translateX(0)";
+      }
+      setTimeout(() => { state.isSwiping = false; }, 100);
+    }
+
+    // Touch
+    item.addEventListener("touchstart", (ev) => {
+      if (ev.target.classList.contains("drag-handle")) return;
+      onStart(ev.touches[0].clientX);
+    }, { passive: true });
+    item.addEventListener("touchmove", (ev) => {
+      if (state.isDragging) return;
+      onMove(ev.touches[0].clientX);
+    }, { passive: true });
+    item.addEventListener("touchend", onEnd);
+
+    // Mouse
+    item.addEventListener("mousedown", (ev) => {
+      if (ev.target.classList.contains("drag-handle")) return;
+      onStart(ev.clientX);
+      const onMouseMove = (e) => { if (state.isDragging) return; onMove(e.clientX); };
+      const onMouseUp = () => { onEnd(); document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
   });
 }
 
