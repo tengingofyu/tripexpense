@@ -73,8 +73,8 @@ input, select, textarea, button { font-family: inherit; }
 .drag-handle { color: var(--text-muted); font-size: 18px; cursor: grab; padding: 4px 0 4px 4px; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0; line-height: 1; }
 .drag-handle:active { cursor: grabbing; }
 .expense-item.dragging { opacity: 0.4; background: var(--surface); }
-.expense-item.drag-over { border-top: 2px solid var(--accent); margin-top: -2px; }
-.day-header.drag-over { border-bottom: 2px solid var(--accent); }
+.expense-item.drag-over { border-top: 2px solid var(--accent); margin-top: -2px; background: rgba(59,130,246,0.15); }
+.day-header.drag-over { border-bottom: 2px solid var(--accent); background: rgba(59,130,246,0.1); }
 
 /* Swipe to delete */
 .swipe-container { position: relative; overflow: hidden; }
@@ -754,6 +754,7 @@ function initDragAndDrop() {
   let dragClone = null;
   let longPressTimer = null;
   let dragStarted = false;
+  let scrollInterval = null;
 
   function startDrag(id, item, clientY) {
     dragStarted = true;
@@ -770,7 +771,10 @@ function initDragAndDrop() {
     if (!dragStarted || !dragClone) return;
     dragClone.style.top = (clientY - 30) + "px";
     document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+    // Hide clone briefly to find element below
+    dragClone.style.display = "none";
     const elBelow = document.elementFromPoint(clientX, clientY);
+    dragClone.style.display = "";
     if (!elBelow) return;
     const targetItem = elBelow.closest(".expense-item[data-id]");
     const targetDay = elBelow.closest(".day-header[data-dayheader]");
@@ -779,10 +783,20 @@ function initDragAndDrop() {
     } else if (targetDay) {
       targetDay.classList.add("drag-over");
     }
+    // Auto-scroll when near edges
+    const edgeZone = 60;
+    const vh = window.innerHeight;
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    if (clientY < edgeZone) {
+      scrollInterval = setInterval(() => { window.scrollBy(0, -8); }, 16);
+    } else if (clientY > vh - edgeZone) {
+      scrollInterval = setInterval(() => { window.scrollBy(0, 8); }, 16);
+    }
   }
 
   function endDrag() {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
     if (!dragStarted) { dragId = null; dragEl = null; return; }
     const overItem = document.querySelector(".expense-item.drag-over");
     const overDay = document.querySelector(".day-header.drag-over");
@@ -795,6 +809,7 @@ function initDragAndDrop() {
   }
 
   function cleanup() {
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
     document.querySelectorAll(".dragging,.drag-over").forEach(el => { el.classList.remove("dragging"); el.classList.remove("drag-over"); });
     if (dragClone) { dragClone.remove(); dragClone = null; }
     dragId = null; dragEl = null; dragStarted = false;
