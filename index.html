@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TengTrip">
-<title>TengTrip</title>
+<meta name="apple-mobile-web-app-title" content="TripExpense">
+<title>TripExpense</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -173,7 +173,7 @@ input, select, textarea, button { font-family: inherit; }
   <!-- Header -->
   <div class="header">
     <div class="header-top">
-      <h1 class="logo">TengTrip</h1>
+      <h1 class="logo">TripExpense</h1>
       <span class="trip-badge" id="trip-badge"></span>
     </div>
     <div class="trip-name" id="trip-name"></div>
@@ -265,7 +265,7 @@ function persist() {
 
 // ─── Helpers ───────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-function todayStr() { return new Date().toISOString().split("T")[0]; }
+function todayStr() { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function formatDate(ds) {
   const d = new Date(ds);
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()] + ", " + d.getDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
@@ -411,6 +411,7 @@ function renderExpenses() {
 function renderEditForm(e) {
   let html = '<div class="expense-edit">';
   html += '<div class="edit-grid">';
+  html += `<input class="edit-input" id="edit-date" type="date" value="${e.date}">`;
   html += `<input class="edit-input" id="edit-desc" value="${esc(e.description)}" placeholder="Description">`;
   html += `<input class="edit-input" id="edit-amount" type="number" step="0.01" value="${e.amount}" placeholder="Amount">`;
   html += `<input class="edit-input" id="edit-sgd" type="number" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
@@ -462,6 +463,7 @@ function bindExpenseEvents() {
       const cardId = document.getElementById("edit-card").value;
       state.expenses[idx] = {
         ...state.expenses[idx],
+        date: document.getElementById("edit-date").value || state.expenses[idx].date,
         description: document.getElementById("edit-desc").value,
         amount: parseFloat(document.getElementById("edit-amount").value) || state.expenses[idx].amount,
         sgdAmount: document.getElementById("edit-sgd").value ? parseFloat(document.getElementById("edit-sgd").value) : null,
