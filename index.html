@@ -267,8 +267,9 @@ function persist() {
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function todayStr() { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function formatDate(ds) {
-  const d = new Date(ds);
-  return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()] + ", " + d.getDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+  const [y,m,d] = ds.split("-").map(Number);
+  const dt = new Date(y, m-1, d);
+  return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()] + ", " + d + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
 function detectCategory(desc) {
   const l = desc.toLowerCase();
