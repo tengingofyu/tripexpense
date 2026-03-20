@@ -29,7 +29,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 input, select, textarea, button { font-family: inherit; }
 
 /* Header */
-.header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
+.header { padding: 20px 16px 12px; padding-top: calc(env(safe-area-inset-top, 20px) + 12px); border-bottom: 1px solid var(--border); }
 .header-top { display: flex; align-items: center; justify-content: space-between; }
 .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent); }
 .trip-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; background: var(--accent-dim); color: var(--accent); }
@@ -250,6 +250,23 @@ let state = {
 };
 const deleteTimers = {};
 
+const SEED_EXPENSES = [
+  // Mar 18 (Tue)
+  { id:"s1", date:"2026-03-18", amount:45.98, sgdAmount:null, currency:"USD", description:"Uber to mayumi", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742284800000, sortOrder:0 },
+  { id:"s2", date:"2026-03-18", amount:5.03, sgdAmount:6.46, currency:"USD", description:"beer", card:"2", cardName:"Chocolate Finance", category:"Others", claimable:false, createdAt:1742284801000, sortOrder:1 },
+  // Mar 19 (Wed)
+  { id:"s3", date:"2026-03-19", amount:33.61, sgdAmount:null, currency:"USD", description:"Uber to getty", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371200000, sortOrder:0 },
+  { id:"s4", date:"2026-03-19", amount:54.98, sgdAmount:null, currency:"USD", description:"Uber to Hollywood lake park", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371201000, sortOrder:1 },
+  { id:"s5", date:"2026-03-19", amount:28.98, sgdAmount:null, currency:"USD", description:"Uber to In and out", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371202000, sortOrder:2 },
+  { id:"s6", date:"2026-03-19", amount:9.77, sgdAmount:12.55, currency:"USD", description:"in and out", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742371203000, sortOrder:3 },
+  { id:"s7", date:"2026-03-19", amount:44.98, sgdAmount:null, currency:"USD", description:"Uber to mayumi", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371204000, sortOrder:4 },
+  { id:"s8", date:"2026-03-19", amount:3.64, sgdAmount:4.68, currency:"USD", description:"jack in the box", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742371205000, sortOrder:5 },
+  // Mar 20 (Thu)
+  { id:"s9", date:"2026-03-20", amount:29.99, sgdAmount:null, currency:"USD", description:"Uber to RZLA", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742457600000, sortOrder:0 },
+  { id:"s10", date:"2026-03-20", amount:24.38, sgdAmount:31.33, currency:"USD", description:"coffee bean", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742457601000, sortOrder:1 },
+  { id:"s11", date:"2026-03-20", amount:67.33, sgdAmount:86.51, currency:"USD", description:"ramen nagi", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742457602000, sortOrder:2 },
+];
+
 // ─── Storage ───────────────────────────────────────────
 function load(key, fallback) {
   try { const v = localStorage.getItem("tengtrip-" + key); return v ? JSON.parse(v) : fallback; }
@@ -264,6 +281,8 @@ function loadState() {
   state.cards = load("cards", DEFAULT_CARDS);
   state.pastTrips = load("past-trips", []);
   if (!state.trip) { state.trip = DEFAULT_TRIP; save("trip", DEFAULT_TRIP); }
+  // Seed expenses on first load
+  if (state.expenses.length === 0) { state.expenses = SEED_EXPENSES; save("expenses", state.expenses); }
 }
 function persist() {
   save("trip", state.trip);
