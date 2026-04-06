@@ -25,11 +25,11 @@
   --warn: #f59e0b;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: min(480px, 100vw); margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: min(480px, 100vw); margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-top: env(safe-area-inset-top); }
 input, select, textarea, button { font-family: inherit; }
 
 /* Header */
-.header { padding: 20px 16px 12px; padding-top: calc(env(safe-area-inset-top, 20px) + 12px); border-bottom: 1px solid var(--border); }
+.header { padding: 20px 16px 12px; padding-top: calc(env(safe-area-inset-top, 44px) + 12px); border-bottom: 1px solid var(--border); }
 .header-top { display: flex; align-items: center; justify-content: space-between; }
 .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent); }
 .trip-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; background: var(--accent-dim); color: var(--accent); }
@@ -89,6 +89,11 @@ input, select, textarea, button { font-family: inherit; }
 .expense-right { text-align: right; flex-shrink: 0; }
 .expense-amount { font-size: 13px; font-weight: 600; color: var(--text); display: block; }
 .expense-sgd { font-size: 10px; color: var(--text-muted); display: block; }
+.sgd-pending { color: var(--danger); font-style: italic; }
+
+/* Swap button */
+.swap-btn { background: var(--accent-dim); border: none; color: var(--accent); font-size: 14px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.preview-date { font-size: 10px; padding: 2px 6px; background: #2a1a2e; border-radius: 3px; color: #c084fc; }
 
 /* Deleted item */
 .expense-deleted { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: rgba(127,29,29,0.12); }
@@ -112,6 +117,21 @@ input, select, textarea, button { font-family: inherit; }
 .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; }
 .stat-value { font-size: 20px; font-weight: 700; color: var(--text); }
 .stat-sub { font-size: 11px; color: var(--success); margin-top: 4px; }
+.stat-pending { font-size: 10px; color: var(--danger); margin-top: 4px; font-style: italic; }
+
+/* Dashboard totals banner */
+.total-banner { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+.total-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; }
+.total-label { font-size: 18px; color: #fff; font-weight: 600; }
+.total-value { font-size: 18px; font-weight: 700; color: #fff; }
+.total-pending { font-size: 11px; color: var(--danger); margin-top: 6px; font-style: italic; }
+.total-entries { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+/* Dual-column breakdown */
+.breakdown-header { display: grid; grid-template-columns: 1fr 90px 90px; padding: 0 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.bh-right { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); text-align: right; }
+.breakdown-row-dual { display: grid; grid-template-columns: 1fr 90px 90px; padding: 7px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
+.breakdown-val { font-size: 12px; font-weight: 600; color: var(--text); text-align: right; }
 .breakdown { margin-top: 16px; background: var(--surface); border-radius: 8px; padding: 14px; border: 1px solid var(--border); }
 .breakdown-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 10px; }
 .breakdown-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
@@ -219,9 +239,11 @@ const DEFAULT_CARDS = [
   { id:"12", name:"UOB VS", shortcut:"vs", autoCalc:false },
   { id:"13", name:"YouTrip", shortcut:"youtrip", autoCalc:true },
   { id:"14", name:"Cash", shortcut:"cash", autoCalc:false },
+  { id:"15", name:"Ryde", shortcut:"ryde", autoCalc:true },
+  { id:"16", name:"Revo", shortcut:"revo", autoCalc:false },
 ];
 
-const DEFAULT_TRIP = { id:"us-mar-2026", name:"US Work Trip Mar 2026", currency:"USD", type:"work", createdAt:Date.now() };
+const DEFAULT_TRIP = { id:"us-mar-2026", name:"US Work Trip Mar 2026", currency:"USD", type:"work", dateFormat:"dd/mm", createdAt:Date.now() };
 
 const CATEGORIES = [
   { name:"Transport", keywords:["uber","grab","taxi","cab","lyft","bus","train","mrt","ferry","subway","metro","transit","ride"] },
@@ -247,24 +269,107 @@ let state = {
   showRestore: false,
   isDragging: false,
   isSwiping: false,
+  lastPreview: null,
+  swapped: false,
 };
 const deleteTimers = {};
 
 const SEED_EXPENSES = [
-  // Mar 18 (Tue)
-  { id:"s1", date:"2026-03-18", amount:45.98, sgdAmount:null, currency:"USD", description:"Uber to mayumi", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742284800000, sortOrder:0 },
-  { id:"s2", date:"2026-03-18", amount:5.03, sgdAmount:6.46, currency:"USD", description:"beer", card:"2", cardName:"Chocolate Finance", category:"Others", claimable:false, createdAt:1742284801000, sortOrder:1 },
-  // Mar 19 (Wed)
-  { id:"s3", date:"2026-03-19", amount:33.61, sgdAmount:null, currency:"USD", description:"Uber to getty", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371200000, sortOrder:0 },
-  { id:"s4", date:"2026-03-19", amount:54.98, sgdAmount:null, currency:"USD", description:"Uber to Hollywood lake park", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371201000, sortOrder:1 },
-  { id:"s5", date:"2026-03-19", amount:28.98, sgdAmount:null, currency:"USD", description:"Uber to In and out", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371202000, sortOrder:2 },
-  { id:"s6", date:"2026-03-19", amount:9.77, sgdAmount:12.55, currency:"USD", description:"in and out", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742371203000, sortOrder:3 },
-  { id:"s7", date:"2026-03-19", amount:44.98, sgdAmount:null, currency:"USD", description:"Uber to mayumi", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742371204000, sortOrder:4 },
-  { id:"s8", date:"2026-03-19", amount:3.64, sgdAmount:4.68, currency:"USD", description:"jack in the box", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742371205000, sortOrder:5 },
-  // Mar 20 (Thu)
-  { id:"s9", date:"2026-03-20", amount:29.99, sgdAmount:null, currency:"USD", description:"Uber to RZLA", card:"12", cardName:"UOB VS", category:"Transport", claimable:true, createdAt:1742457600000, sortOrder:0 },
-  { id:"s10", date:"2026-03-20", amount:24.38, sgdAmount:31.33, currency:"USD", description:"coffee bean", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742457601000, sortOrder:1 },
-  { id:"s11", date:"2026-03-20", amount:67.33, sgdAmount:86.51, currency:"USD", description:"ramen nagi", card:"2", cardName:"Chocolate Finance", category:"Food & Drink", claimable:false, createdAt:1742457602000, sortOrder:2 },
+  // Mar 13
+  {id:"s01",date:"2026-03-13",amount:16.20,sgdAmount:20.74,currency:"USD",description:"Airalo eSIM",card:"2",cardName:"Chocolate Finance",category:"Others",claimable:false,createdAt:1741852800000,sortOrder:0},
+  {id:"s02",date:"2026-03-13",amount:0,sgdAmount:32.63,currency:"USD",description:"Ryde to Airport",card:"15",cardName:"Ryde",category:"Transport",claimable:true,createdAt:1741852801000,sortOrder:1,isSgdOnly:true},
+  // Mar 18
+  {id:"s03",date:"2026-03-18",amount:45.98,sgdAmount:60.99,currency:"USD",description:"Uber to Mayumi",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742284800000,sortOrder:0},
+  {id:"s04",date:"2026-03-18",amount:5.03,sgdAmount:6.46,currency:"USD",description:"Sierra Nevada IPA",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742284801000,sortOrder:1},
+  // Mar 19
+  {id:"s05",date:"2026-03-19",amount:33.61,sgdAmount:44.58,currency:"USD",description:"Uber to Getty",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742371200000,sortOrder:0},
+  {id:"s06",date:"2026-03-19",amount:54.98,sgdAmount:72.97,currency:"USD",description:"Uber to Hollywood Lake Park",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742371201000,sortOrder:1},
+  {id:"s07",date:"2026-03-19",amount:28.98,sgdAmount:38.44,currency:"USD",description:"Uber to In-N-Out",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742371202000,sortOrder:2},
+  {id:"s08",date:"2026-03-19",amount:9.77,sgdAmount:12.55,currency:"USD",description:"In-N-Out",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742371203000,sortOrder:3},
+  {id:"s09",date:"2026-03-19",amount:44.98,sgdAmount:59.67,currency:"USD",description:"Uber to Mayumi",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742371204000,sortOrder:4},
+  {id:"s10",date:"2026-03-19",amount:3.64,sgdAmount:4.68,currency:"USD",description:"Jack In The Box",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742371205000,sortOrder:5},
+  // Mar 20
+  {id:"s11",date:"2026-03-20",amount:29.99,sgdAmount:39.78,currency:"USD",description:"Uber to RZLA",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742457600000,sortOrder:0},
+  {id:"s12",date:"2026-03-20",amount:24.38,sgdAmount:31.33,currency:"USD",description:"Coffee Bean",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742457601000,sortOrder:1},
+  {id:"s13",date:"2026-03-20",amount:77.43,sgdAmount:99.13,currency:"USD",description:"Ramen Nagi",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742457602000,sortOrder:2},
+  {id:"s14",date:"2026-03-20",amount:39.97,sgdAmount:53.03,currency:"USD",description:"Uber to Mayumi",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742457603000,sortOrder:3},
+  {id:"s15",date:"2026-03-20",amount:24.98,sgdAmount:33.10,currency:"USD",description:"Uber to Kenneth Hahn",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742457604000,sortOrder:4},
+  {id:"s16",date:"2026-03-20",amount:23.97,sgdAmount:31.76,currency:"USD",description:"Uber to Culver City Westfield",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742457605000,sortOrder:5},
+  {id:"s17",date:"2026-03-20",amount:4.97,sgdAmount:6.38,currency:"USD",description:"Shake Shack",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742457606000,sortOrder:6},
+  {id:"s18",date:"2026-03-20",amount:12.80,sgdAmount:16.96,currency:"USD",description:"Uber to Mayumi",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742457607000,sortOrder:7},
+  // Mar 21
+  {id:"s19",date:"2026-03-21",amount:28.78,sgdAmount:38.14,currency:"USD",description:"Uber to RZLA",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742544000000,sortOrder:0},
+  {id:"s20",date:"2026-03-21",amount:287.25,sgdAmount:380.64,currency:"USD",description:"Uber to Embassy Suites",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742544001000,sortOrder:1},
+  {id:"s21",date:"2026-03-21",amount:37.98,sgdAmount:50.32,currency:"USD",description:"Uber to La Jolla",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742544002000,sortOrder:2},
+  {id:"s22",date:"2026-03-21",amount:5.75,sgdAmount:7.38,currency:"USD",description:"The Taco Stand",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742544003000,sortOrder:3},
+  {id:"s23",date:"2026-03-21",amount:34.97,sgdAmount:46.34,currency:"USD",description:"Uber to Embassy Suites",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742544004000,sortOrder:4},
+  // Mar 22
+  {id:"s24",date:"2026-03-22",amount:17.68,sgdAmount:22.69,currency:"USD",description:"Blue Bottle Coffee",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742630400000,sortOrder:0},
+  {id:"s25",date:"2026-03-22",amount:20.98,sgdAmount:27.81,currency:"USD",description:"Uber to Scripps Pier",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742630401000,sortOrder:1},
+  {id:"s26",date:"2026-03-22",amount:25.98,sgdAmount:34.48,currency:"USD",description:"Uber to Embassy Suites",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742630402000,sortOrder:2},
+  {id:"s27",date:"2026-03-22",amount:2.00,sgdAmount:2.57,currency:"USD",description:"Tips",card:"14",cardName:"Cash",category:"Food & Drink",claimable:false,createdAt:1742630403000,sortOrder:3},
+  // Mar 23
+  {id:"s28",date:"2026-03-23",amount:46.00,sgdAmount:60.96,currency:"USD",description:"Embassy Suites Fees",card:"9",cardName:"UOB Ladies",category:"Accommodation",claimable:true,createdAt:1742716800000,sortOrder:0},
+  {id:"s29",date:"2026-03-23",amount:50.99,sgdAmount:67.57,currency:"USD",description:"Uber to SAN",card:"12",cardName:"UOB VS",category:"Transport",claimable:true,createdAt:1742716801000,sortOrder:1},
+  {id:"s30",date:"2026-03-23",amount:40.00,sgdAmount:53.01,currency:"USD",description:"Baggage Fee Alaska",card:"9",cardName:"UOB Ladies",category:"Others",claimable:true,createdAt:1742716802000,sortOrder:2},
+  {id:"s31",date:"2026-03-23",amount:39.57,sgdAmount:52.58,currency:"USD",description:"Uber to Element",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742716803000,sortOrder:3},
+  {id:"s32",date:"2026-03-23",amount:25.99,sgdAmount:34.53,currency:"USD",description:"Uber to Pennybacker Bridge",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742716804000,sortOrder:4},
+  {id:"s33",date:"2026-03-23",amount:29.98,sgdAmount:39.84,currency:"USD",description:"Uber to Domain Northside",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742716805000,sortOrder:5},
+  {id:"s34",date:"2026-03-23",amount:6.81,sgdAmount:8.76,currency:"USD",description:"McDonald's",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742716806000,sortOrder:6},
+  // Mar 24
+  {id:"s35",date:"2026-03-24",amount:6.33,sgdAmount:8.15,currency:"USD",description:"Houndstoot Coffee",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742803200000,sortOrder:0},
+  {id:"s36",date:"2026-03-24",amount:9.96,sgdAmount:13.18,currency:"USD",description:"Uber to Element",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742803201000,sortOrder:1},
+  {id:"s37",date:"2026-03-24",amount:36.99,sgdAmount:48.94,currency:"USD",description:"Uber to Capitol",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742803202000,sortOrder:2},
+  {id:"s38",date:"2026-03-24",amount:13.97,sgdAmount:18.48,currency:"USD",description:"Uber to Target",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742803203000,sortOrder:3},
+  {id:"s39",date:"2026-03-24",amount:15.12,sgdAmount:19.39,currency:"USD",description:"Target - Gums & Lip Balm",card:"2",cardName:"Chocolate Finance",category:"Shopping",claimable:false,createdAt:1742803204000,sortOrder:4},
+  {id:"s40",date:"2026-03-24",amount:26.98,sgdAmount:35.70,currency:"USD",description:"Uber to Element",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742803205000,sortOrder:5},
+  // Mar 25
+  {id:"s41",date:"2026-03-25",amount:13.30,sgdAmount:17.68,currency:"USD",description:"Element Austin Hotel Charges",card:"9",cardName:"UOB Ladies",category:"Accommodation",claimable:true,createdAt:1742889600000,sortOrder:0},
+  {id:"s42",date:"2026-03-25",amount:58.98,sgdAmount:78.71,currency:"USD",description:"Uber to Austin Airport",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1742889601000,sortOrder:1},
+  {id:"s43",date:"2026-03-25",amount:35.00,sgdAmount:46.31,currency:"USD",description:"Luggage Fee Delta",card:"9",cardName:"UOB Ladies",category:"Others",claimable:true,createdAt:1742889602000,sortOrder:2},
+  {id:"s44",date:"2026-03-25",amount:118.42,sgdAmount:158.02,currency:"USD",description:"Uber to Residence Inn Seattle",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1742889603000,sortOrder:3},
+  {id:"s45",date:"2026-03-25",amount:12.98,sgdAmount:17.18,currency:"USD",description:"Uber to Ivar's",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742889604000,sortOrder:4},
+  {id:"s46",date:"2026-03-25",amount:29.57,sgdAmount:37.91,currency:"USD",description:"Ivar Fish N Chips",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742889605000,sortOrder:5},
+  {id:"s47",date:"2026-03-25",amount:11.97,sgdAmount:15.85,currency:"USD",description:"Uber to Fremont Brewing",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742889606000,sortOrder:6},
+  {id:"s48",date:"2026-03-25",amount:7.74,sgdAmount:9.92,currency:"USD",description:"Fremont Lush IPA",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742889607000,sortOrder:7},
+  {id:"s49",date:"2026-03-25",amount:22.10,sgdAmount:28.33,currency:"USD",description:"Fremont Lush IPA Pack + Space",card:"2",cardName:"Chocolate Finance",category:"Shopping",claimable:false,createdAt:1742889608000,sortOrder:8},
+  {id:"s50",date:"2026-03-25",amount:23.98,sgdAmount:31.75,currency:"USD",description:"Uber to Residence Inn Seattle",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742889609000,sortOrder:9},
+  // Mar 26
+  {id:"s51",date:"2026-03-26",amount:11.98,sgdAmount:15.86,currency:"USD",description:"Uber to RZSEA",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742976000000,sortOrder:0},
+  {id:"s52",date:"2026-03-26",amount:5.47,sgdAmount:7.01,currency:"USD",description:"Starbucks",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742976001000,sortOrder:1},
+  {id:"s53",date:"2026-03-26",amount:20.97,sgdAmount:27.84,currency:"USD",description:"Uber to Dicks",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742976002000,sortOrder:2},
+  {id:"s54",date:"2026-03-26",amount:9.62,sgdAmount:12.38,currency:"USD",description:"Dick's Drive In",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742976003000,sortOrder:3},
+  {id:"s55",date:"2026-03-26",amount:10.98,sgdAmount:14.58,currency:"USD",description:"Uber to Residence Inn Seattle",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742976004000,sortOrder:4},
+  {id:"s56",date:"2026-03-26",amount:25.97,sgdAmount:34.47,currency:"USD",description:"Uber to Best Buy",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742976005000,sortOrder:5},
+  {id:"s57",date:"2026-03-26",amount:38.69,sgdAmount:49.79,currency:"USD",description:"Target Chino",card:"2",cardName:"Chocolate Finance",category:"Groceries",claimable:false,createdAt:1742976006000,sortOrder:6},
+  {id:"s58",date:"2026-03-26",amount:28.98,sgdAmount:38.47,currency:"USD",description:"Uber to Residence Inn Seattle",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1742976007000,sortOrder:7},
+  {id:"s59",date:"2026-03-26",amount:4.81,sgdAmount:6.19,currency:"USD",description:"Hazy IPA",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1742976008000,sortOrder:8},
+  // Mar 27
+  {id:"s60",date:"2026-03-27",amount:95.99,sgdAmount:128.09,currency:"USD",description:"Uber to SEA Airport",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1743062400000,sortOrder:0},
+  {id:"s61",date:"2026-03-27",amount:35.00,sgdAmount:46.46,currency:"USD",description:"Luggage Fee Delta",card:"9",cardName:"UOB Ladies",category:"Others",claimable:true,createdAt:1743062401000,sortOrder:1},
+  {id:"s62",date:"2026-03-27",amount:34.97,sgdAmount:46.52,currency:"USD",description:"Uber to Residence Inn San Jose",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1743062402000,sortOrder:2},
+  {id:"s63",date:"2026-03-27",amount:17.95,sgdAmount:23.88,currency:"USD",description:"Uber to Alberto's",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1743062403000,sortOrder:3},
+  {id:"s64",date:"2026-03-27",amount:15.00,sgdAmount:19.35,currency:"USD",description:"Alberto's Cover Charge",card:"2",cardName:"Chocolate Finance",category:"Activities",claimable:false,createdAt:1743062404000,sortOrder:4},
+  {id:"s65",date:"2026-03-27",amount:21.93,sgdAmount:29.18,currency:"USD",description:"Uber to Residence Inn San Jose",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1743062405000,sortOrder:5},
+  // Mar 28
+  {id:"s66",date:"2026-03-28",amount:26.95,sgdAmount:35.86,currency:"USD",description:"Uber to RZSJ",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1743148800000,sortOrder:0},
+  {id:"s67",date:"2026-03-28",amount:10.70,sgdAmount:13.80,currency:"USD",description:"Starbucks",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1743148801000,sortOrder:1},
+  {id:"s68",date:"2026-03-28",amount:8.45,sgdAmount:10.90,currency:"USD",description:"Starbucks",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1743148802000,sortOrder:2},
+  {id:"s69",date:"2026-03-28",amount:27.98,sgdAmount:36.10,currency:"USD",description:"Popeyes",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1743148803000,sortOrder:3},
+  {id:"s70",date:"2026-03-28",amount:17.25,sgdAmount:22.25,currency:"USD",description:"Blue Bottle",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1743148804000,sortOrder:4},
+  {id:"s71",date:"2026-03-28",amount:25.97,sgdAmount:34.54,currency:"USD",description:"Uber to Walmart",card:"11",cardName:"UOB PRVI",category:"Transport",claimable:true,createdAt:1743148805000,sortOrder:5},
+  {id:"s72",date:"2026-03-28",amount:17.11,sgdAmount:22.07,currency:"USD",description:"Walmart",card:"2",cardName:"Chocolate Finance",category:"Groceries",claimable:false,createdAt:1743148806000,sortOrder:6},
+  {id:"s73",date:"2026-03-28",amount:28.95,sgdAmount:38.63,currency:"USD",description:"Uber to Target",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1743148807000,sortOrder:7},
+  {id:"s74",date:"2026-03-28",amount:12.95,sgdAmount:17.28,currency:"USD",description:"Uber to Residence Inn San Jose",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1743148808000,sortOrder:8},
+  // Mar 29
+  {id:"s75",date:"2026-03-29",amount:26.93,sgdAmount:35.93,currency:"USD",description:"Uber to RZSJ",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1743235200000,sortOrder:0},
+  {id:"s76",date:"2026-03-29",amount:41.00,sgdAmount:54.55,currency:"USD",description:"Laundry",card:"9",cardName:"UOB Ladies",category:"Others",claimable:true,createdAt:1743235201000,sortOrder:1},
+  {id:"s77",date:"2026-03-29",amount:15.00,sgdAmount:19.35,currency:"USD",description:"Blue Bottle",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1743235202000,sortOrder:2},
+  {id:"s78",date:"2026-03-29",amount:115.97,sgdAmount:154.75,currency:"USD",description:"Uber to SFO",card:"16",cardName:"Revo",category:"Transport",claimable:true,createdAt:1743235203000,sortOrder:3},
+  {id:"s79",date:"2026-03-29",amount:52.00,sgdAmount:67.09,currency:"USD",description:"DFS Cookies",card:"2",cardName:"Chocolate Finance",category:"Shopping",claimable:false,createdAt:1743235204000,sortOrder:4},
+  {id:"s80",date:"2026-03-29",amount:21.93,sgdAmount:28.29,currency:"USD",description:"Mustards Bar and Grill",card:"2",cardName:"Chocolate Finance",category:"Food & Drink",claimable:false,createdAt:1743235205000,sortOrder:5},
+  // Mar 31
+  {id:"s81",date:"2026-03-31",amount:0,sgdAmount:40.84,currency:"USD",description:"Ryde Home",card:"15",cardName:"Ryde",category:"Transport",claimable:true,createdAt:1743408000000,sortOrder:0,isSgdOnly:true},
 ];
 
 // ─── Storage ───────────────────────────────────────────
@@ -293,6 +398,7 @@ function persist() {
 
 // ─── Helpers ───────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmt(n) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
 function todayStr() { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function formatDate(ds) {
   const [y,m,d] = ds.split("-").map(Number);
@@ -304,31 +410,65 @@ function detectCategory(desc) {
   for (const c of CATEGORIES) { if (c.name==="Others") continue; for (const k of c.keywords) { if (l.includes(k)) return c.name; } }
   return "Others";
 }
-function parseInput(text, cards) {
+function parseInput(text, cards, trip) {
   text = text.trim(); if (!text) return null;
+
+  // Detect SGD-only entry
+  const isSgdOnly = /\bsgd\b/i.test(text);
+  let cleanText = text.replace(/\bsgd\b/i, "").trim();
+
+  // Detect date pattern (dd/mm or mm/dd based on trip setting)
+  let parsedDate = null;
+  const dateMatch = cleanText.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+  if (dateMatch) {
+    const a = parseInt(dateMatch[1]), b = parseInt(dateMatch[2]);
+    const fmt = (trip && trip.dateFormat) || "dd/mm";
+    let day, month;
+    if (fmt === "dd/mm") { day = a; month = b; }
+    else { month = a; day = b; }
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const year = new Date().getFullYear();
+      parsedDate = year + "-" + String(month).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+      cleanText = cleanText.replace(dateMatch[0], "").trim();
+    }
+  }
+
   const amtRe = /\b(\d+(?:\.\d{1,2})?)\b/g;
   const amounts = []; let m;
-  while ((m = amtRe.exec(text)) !== null) amounts.push({ value:parseFloat(m[1]), index:m.index, length:m[0].length });
+  while ((m = amtRe.exec(cleanText)) !== null) amounts.push({ value:parseFloat(m[1]), index:m.index, length:m[0].length });
   if (!amounts.length) return null;
-  const sorted = [...cards].sort((a,b) => b.shortcut.length - a.shortcut.length);
+  const sortedCards = [...cards].sort((a,b) => b.shortcut.length - a.shortcut.length);
   let foundCard=null, cardIdx=-1, cardLen=0;
-  for (const c of sorted) {
+  for (const c of sortedCards) {
     const re = new RegExp("\\b" + c.shortcut.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "\\b", "i");
-    const cm = text.match(re);
+    const cm = cleanText.match(re);
     if (cm) { foundCard=c; cardIdx=cm.index; cardLen=cm[0].length; break; }
   }
-  const fa = amounts[0];
-  let sgd = null;
-  if (amounts.length >= 2 && foundCard && foundCard.autoCalc) sgd = amounts[1].value;
-  else if (amounts.length >= 2 && !foundCard) sgd = amounts[1].value;
-  let desc = text;
-  const removals = [{ index:fa.index, length:fa.length }];
-  if (sgd !== null && amounts.length >= 2) removals.push({ index:amounts[1].index, length:amounts[1].length });
+
+  let foreignAmount, sgdAmount = null;
+
+  if (isSgdOnly) {
+    // SGD-only: first amount is SGD, no foreign
+    foreignAmount = null;
+    sgdAmount = amounts[0].value;
+  } else {
+    foreignAmount = amounts[0].value;
+    if (amounts.length >= 2 && foundCard && foundCard.autoCalc) sgdAmount = amounts[1].value;
+    else if (amounts.length >= 2 && !foundCard) sgdAmount = amounts[1].value;
+  }
+
+  // Build description
+  let desc = cleanText;
+  const removals = [];
+  if (!isSgdOnly) removals.push({ index:amounts[0].index, length:amounts[0].length });
+  else removals.push({ index:amounts[0].index, length:amounts[0].length });
+  if (sgdAmount !== null && amounts.length >= 2 && !isSgdOnly) removals.push({ index:amounts[1].index, length:amounts[1].length });
   if (cardIdx >= 0) removals.push({ index:cardIdx, length:cardLen });
   removals.sort((a,b) => b.index - a.index);
   for (const r of removals) desc = desc.slice(0,r.index) + desc.slice(r.index+r.length);
   desc = desc.replace(/\s+/g," ").trim();
-  return { amount:fa.value, sgdAmount:sgd, card:foundCard, description:desc, category:detectCategory(desc) };
+
+  return { amount:foreignAmount, sgdAmount:sgdAmount, card:foundCard, description:desc, category:detectCategory(desc), parsedDate:parsedDate, isSgdOnly:isSgdOnly };
 }
 function esc(s) { const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
 
@@ -373,7 +513,8 @@ function renderExpenses() {
   if (state.pendingExpense) {
     const pe = state.pendingExpense;
     html += '<div class="claim-prompt">';
-    html += `<span class="claim-text"><span class="claim-amount">${c} ${pe.amount.toFixed(2)}</span> ${esc(pe.description)} — Claimable?</span>`;
+    const peAmtText = pe.isSgdOnly ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
+    html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
     html += '<div class="claim-buttons">';
     html += '<button class="claim-yes" id="claim-yes">Yes</button>';
     html += '<button class="claim-no" id="claim-no">No</button>';
@@ -388,8 +529,11 @@ function renderExpenses() {
     html += '<div class="empty">No expenses yet. Start typing above.</div>';
   } else {
     for (const [date, exps] of Object.entries(grouped)) {
-      const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s+e.amount, 0);
-      html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${c} ${dayTotal.toFixed(2)}</span></div>`;
+      const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+      const daySgdOnly = exps.filter(e=>!state.deletedIds[e.id] && e.isSgdOnly).reduce((s,e) => s + (e.sgdAmount||0), 0);
+      let dayTotalText = `${c} ${dayTotal.toFixed(2)}`;
+      if (daySgdOnly > 0) dayTotalText += ` + SGD ${daySgdOnly.toFixed(2)}`;
+      html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${dayTotalText}</span></div>`;
       for (const e of exps) {
         if (state.deletedIds[e.id]) {
           html += `<div class="expense-deleted"><span>${esc(e.description)}</span><button class="undo-btn" data-undo="${e.id}">Undo</button></div>`;
@@ -410,8 +554,16 @@ function renderExpenses() {
         if (e.claimable) html += '<span class="tag-claim">Claim</span>';
         html += '</div></div>';
         html += '<div class="expense-right">';
-        html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
-        if (e.sgdAmount) html += `<span class="expense-sgd">SGD ${e.sgdAmount.toFixed(2)}</span>`;
+        if (e.isSgdOnly) {
+          html += `<span class="expense-amount">SGD ${(e.sgdAmount||0).toFixed(2)}</span>`;
+        } else {
+          html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
+          if (e.sgdAmount) {
+            html += `<span class="expense-sgd">SGD ${e.sgdAmount.toFixed(2)}</span>`;
+          } else {
+            html += `<span class="expense-sgd sgd-pending">SGD pending</span>`;
+          }
+        }
         html += '</div>';
         html += `<span class="drag-handle" data-drag="${e.id}">≡</span>`;
         html += '</div></div>';
@@ -505,7 +657,13 @@ function bindExpenseEvents() {
       };
       persist();
     }
-    state.editingId = null; render();
+    state.editingId = null;
+    const scrollToId = id;
+    render();
+    setTimeout(() => {
+      const el = document.querySelector(`[data-id="${scrollToId}"]`);
+      if (el) el.scrollIntoView({ behavior:"smooth", block:"center" });
+    }, 50);
   });
   const cancelEdit = document.getElementById("cancel-edit");
   if (cancelEdit) cancelEdit.addEventListener("click", () => { state.editingId = null; render(); });
@@ -529,29 +687,65 @@ function bindExpenseEvents() {
 function updatePreview(val) {
   const prev = document.getElementById("preview");
   if (!prev || state.pendingExpense) return;
-  const p = parseInput(val, state.cards);
-  if (!p || !p.amount) { prev.innerHTML = ''; return; }
+  const p = parseInput(val, state.cards, state.trip);
+  if (!p || (!p.amount && !p.isSgdOnly)) { prev.innerHTML = ''; return; }
+  state.lastPreview = p;
   const c = state.trip.currency;
-  let h = `<span class="preview-amount">${c} ${p.amount.toFixed(2)}</span>`;
-  if (p.sgdAmount) h += `<span class="preview-sgd">≈ SGD ${p.sgdAmount.toFixed(2)}</span>`;
+  let h = '';
+  if (p.parsedDate) h += `<span class="preview-date">${formatDate(p.parsedDate)}</span>`;
+  if (p.isSgdOnly) {
+    h += `<span class="preview-amount">SGD ${p.sgdAmount.toFixed(2)}</span>`;
+  } else {
+    h += `<span class="preview-amount">${c} ${p.amount.toFixed(2)}</span>`;
+    if (p.sgdAmount) {
+      h += `<span class="preview-sgd">SGD ${p.sgdAmount.toFixed(2)}</span>`;
+      h += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
+    }
+  }
   if (p.card) h += `<span class="preview-card">${esc(p.card.name)}</span>`;
   h += `<span class="preview-cat">${p.category}</span>`;
   if (p.description) h += `<span class="preview-desc">${esc(p.description)}</span>`;
   prev.innerHTML = h;
+  // Bind swap
+  const swapBtn = document.getElementById("swap-amounts");
+  if (swapBtn) swapBtn.addEventListener("click", () => {
+    if (state.lastPreview && state.lastPreview.sgdAmount) {
+      const tmp = state.lastPreview.amount;
+      state.lastPreview.amount = state.lastPreview.sgdAmount;
+      state.lastPreview.sgdAmount = tmp;
+      state.swapped = !state.swapped;
+      // Re-render preview without re-parsing
+      const lp = state.lastPreview;
+      let h2 = '';
+      if (lp.parsedDate) h2 += `<span class="preview-date">${formatDate(lp.parsedDate)}</span>`;
+      h2 += `<span class="preview-amount">${c} ${lp.amount.toFixed(2)}</span>`;
+      h2 += `<span class="preview-sgd">SGD ${lp.sgdAmount.toFixed(2)}</span>`;
+      h2 += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
+      if (lp.card) h2 += `<span class="preview-card">${esc(lp.card.name)}</span>`;
+      h2 += `<span class="preview-cat">${lp.category}</span>`;
+      if (lp.description) h2 += `<span class="preview-desc">${esc(lp.description)}</span>`;
+      prev.innerHTML = h2;
+      document.getElementById("swap-amounts")?.addEventListener("click", arguments.callee);
+    }
+  });
 }
 
 function submitExpense(val) {
-  const p = parseInput(val, state.cards);
-  if (!p || !p.amount) return;
-  // New entries go to bottom of today's group
-  const todayExps = state.expenses.filter(e => e.date === todayStr());
-  const maxOrder = todayExps.length ? Math.max(...todayExps.map(e => e.sortOrder || 0)) + 1 : 0;
+  // Use swapped preview if available, otherwise parse fresh
+  const p = state.lastPreview || parseInput(val, state.cards, state.trip);
+  if (!p || (!p.amount && !p.isSgdOnly)) return;
+  const expDate = p.parsedDate || todayStr();
+  const dateExps = state.expenses.filter(e => e.date === expDate);
+  const maxOrder = dateExps.length ? Math.max(...dateExps.map(e => e.sortOrder || 0)) + 1 : 0;
   const expense = {
-    id: genId(), date: todayStr(), amount: p.amount, sgdAmount: p.sgdAmount,
+    id: genId(), date: expDate, amount: p.isSgdOnly ? 0 : p.amount, sgdAmount: p.sgdAmount,
     currency: state.trip.currency, description: p.description,
     card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
     category: p.category, claimable: false, createdAt: Date.now(), sortOrder: maxOrder,
+    isSgdOnly: p.isSgdOnly || false,
   };
+  state.lastPreview = null;
+  state.swapped = false;
   if (state.trip.type === "work") {
     state.pendingExpense = expense;
     render();
@@ -587,9 +781,9 @@ function undoDelete(id) {
 }
 
 function generateCsv() {
-  const h = ["Date","Description","Amount","Currency","SGD Amount","Card","Category","Claimable"];
-  const rows = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
-    .map(e => [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', e.amount.toFixed(2), e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||"", e.claimable?"Yes":"No"].join(","));
+  const h = ["Date","Description","Amount","Currency","SGD Amount","Card","Category","Claimable","SGD Only"];
+  const rows = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0))
+    .map(e => [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', e.isSgdOnly ? "" : e.amount.toFixed(2), e.isSgdOnly ? "SGD" : e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||"", e.claimable?"Yes":"No", e.isSgdOnly?"Yes":"No"].join(","));
   return [h.join(","), ...rows].join("\n");
 }
 
@@ -597,27 +791,62 @@ function generateCsv() {
 function renderDashboard() {
   const exps = state.expenses.filter(e => !state.deletedIds[e.id]);
   const c = state.trip.currency;
-  const totalF = exps.reduce((s,e) => s+e.amount, 0);
-  const totalS = exps.reduce((s,e) => s+(e.sgdAmount||0), 0);
-  const totalClaim = exps.filter(e=>e.claimable).reduce((s,e) => s+e.amount, 0);
-  const byCard = {}, byCat = {};
-  exps.forEach(e => { byCard[e.cardName||"Unknown"] = (byCard[e.cardName||"Unknown"]||0)+e.amount; byCat[e.category] = (byCat[e.category]||0)+e.amount; });
+  const claimable = exps.filter(e => e.claimable);
+  const nonClaimable = exps.filter(e => !e.claimable);
+
+  const totalF = exps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+  const totalSgd = exps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const claimF = claimable.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+  const claimSgd = claimable.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const nonClaimF = nonClaimable.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+  const nonClaimSgd = nonClaimable.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const pendingSgdCount = exps.filter(e => !e.sgdAmount && !e.isSgdOnly).length;
+
+  // By card: track both USD and SGD
+  const byCard = {}, byCardSgd = {}, byCat = {}, byCatSgd = {};
+  exps.forEach(e => {
+    const n = e.cardName||"Unknown";
+    const amt = e.isSgdOnly ? 0 : e.amount;
+    const sgd = e.sgdAmount || 0;
+    byCard[n] = (byCard[n]||0) + amt;
+    byCardSgd[n] = (byCardSgd[n]||0) + sgd;
+    byCat[e.category] = (byCat[e.category]||0) + amt;
+    byCatSgd[e.category] = (byCatSgd[e.category]||0) + sgd;
+  });
 
   let h = '<div class="dashboard">';
-  h += '<div class="stat-row">';
-  h += `<div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${c} ${totalF.toFixed(2)}</div>${totalS>0?`<div class="stat-sub">≈ SGD ${totalS.toFixed(2)}</div>`:''}</div>`;
-  h += `<div class="stat-card"><div class="stat-label">Entries</div><div class="stat-value">${exps.length}</div></div>`;
-  h += `<div class="stat-card"><div class="stat-label">Claimable</div><div class="stat-value">${c} ${totalClaim.toFixed(2)}</div></div>`;
+
+  // Totals - prominent
+  h += '<div class="total-banner">';
+  h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
+  h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${fmt(totalSgd)}</span></div>`;
+  if (pendingSgdCount > 0) h += `<div class="total-pending">${pendingSgdCount} entries pending SGD</div>`;
+  h += `<div class="total-entries">${exps.length} entries</div>`;
   h += '</div>';
+
+  // Claimable breakdown
+  if (state.trip.type === "work") {
+    h += '<div class="breakdown"><div class="breakdown-title">Claimable vs Personal</div>';
+    h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">$${fmt(claimF)}</span><span class="breakdown-val">S$${fmt(claimSgd)}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">$${fmt(nonClaimF)}</span><span class="breakdown-val">S$${fmt(nonClaimSgd)}</span></div>`;
+    h += '</div>';
+  }
 
   if (Object.keys(byCard).length) {
     h += '<div class="breakdown"><div class="breakdown-title">By Card</div>';
-    Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => { h += `<div class="breakdown-row"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-value">${c} ${a.toFixed(2)}</span></div>`; });
+    h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
+    Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${fmt(a)}</span><span class="breakdown-val">S$${fmt(byCardSgd[n]||0)}</span></div>`;
+    });
     h += '</div>';
   }
   if (Object.keys(byCat).length) {
     h += '<div class="breakdown"><div class="breakdown-title">By Category</div>';
-    Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => { h += `<div class="breakdown-row"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-value">${c} ${a.toFixed(2)}</span></div>`; });
+    h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
+    Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${fmt(a)}</span><span class="breakdown-val">S$${fmt(byCatSgd[n]||0)}</span></div>`;
+    });
     h += '</div>';
   }
   h += '</div>';
@@ -726,22 +955,31 @@ function renderSetup() {
   h += '<input class="setup-input" id="setup-currency" placeholder="USD" maxlength="3">';
   h += '<label class="setup-label">Trip Type</label>';
   h += '<div class="type-toggle"><button class="type-btn active" id="type-personal" data-type="personal">Personal</button><button class="type-btn" id="type-work" data-type="work">Work</button></div>';
+  h += '<label class="setup-label">Date Format</label>';
+  h += '<div class="type-toggle"><button class="type-btn active" id="fmt-ddmm" data-fmt="dd/mm">DD/MM</button><button class="type-btn" id="fmt-mmdd" data-fmt="mm/dd">MM/DD</button></div>';
   h += '<button class="setup-save" id="setup-save">Start Trip</button>';
   h += '</div>';
   document.getElementById("view-setup").innerHTML = h;
 
   let tripType = "personal";
-  document.querySelectorAll(".type-btn").forEach(b => {
+  let dateFormat = "dd/mm";
+  document.querySelectorAll(".type-btn[data-type]").forEach(b => {
     b.addEventListener("click", () => {
       tripType = b.dataset.type;
-      document.querySelectorAll(".type-btn").forEach(x => x.classList.toggle("active", x===b));
+      document.querySelectorAll(".type-btn[data-type]").forEach(x => x.classList.toggle("active", x===b));
+    });
+  });
+  document.querySelectorAll(".type-btn[data-fmt]").forEach(b => {
+    b.addEventListener("click", () => {
+      dateFormat = b.dataset.fmt;
+      document.querySelectorAll(".type-btn[data-fmt]").forEach(x => x.classList.toggle("active", x===b));
     });
   });
   document.getElementById("setup-save")?.addEventListener("click", () => {
     const name = document.getElementById("setup-name").value.trim();
     const cur = document.getElementById("setup-currency").value.trim().toUpperCase();
     if (!name || !cur) return;
-    state.trip = { id:genId(), name, currency:cur, type:tripType, createdAt:Date.now() };
+    state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, createdAt:Date.now() };
     state.expenses = [];
     persist(); state.currentView = "expenses"; render();
   });
