@@ -8,6 +8,27 @@
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCHoMZNv-o4VssCeSjAFKDb2iRpb1QXwQ0",
+  authDomain: "tripexpense-15d99.firebaseapp.com",
+  projectId: "tripexpense-15d99",
+  storageBucket: "tripexpense-15d99.firebasestorage.app",
+  messagingSenderId: "434736138161",
+  appId: "1:434736138161:web:62d955bede88bd822d9f90"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+
+// Expose to global scope for the non-module script
+window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
+</script>
 <style>
 :root {
   --bg: #0a0f1a;
@@ -192,11 +213,38 @@ input, select, textarea, button { font-family: inherit; }
 
 .empty { text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px; }
 .hidden { display: none; }
+
+/* Auth screen */
+.auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; padding: 24px; }
+.auth-logo { font-size: 28px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.auth-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; }
+.auth-btn { display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.auth-btn img { width: 20px; height: 20px; }
+.auth-status { font-size: 12px; color: var(--danger); margin-top: 12px; }
+.user-info { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); padding: 4px 16px; }
+.signout-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; }
+.sync-indicator { font-size: 10px; color: var(--success); padding: 0 16px 4px; }
 </style>
 </head>
 <body>
 
-<div id="app">
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-logo">TripExpense</div>
+  <div class="auth-sub">Sign in to sync your expenses across devices</div>
+  <button class="auth-btn" id="google-signin">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"> Sign in with Google
+  </button>
+  <div class="auth-status" id="auth-status"></div>
+</div>
+
+<div id="app" class="hidden">
+  <!-- User info -->
+  <div class="user-info">
+    <span id="user-email"></span>
+    <button class="signout-btn" id="signout-btn">Sign out</button>
+  </div>
+  <div class="sync-indicator" id="sync-status"></div>
+
   <!-- Header -->
   <div class="header">
     <div class="header-top">
@@ -372,28 +420,84 @@ const SEED_EXPENSES = [
   {id:"s81",date:"2026-03-31",amount:0,sgdAmount:40.84,currency:"USD",description:"Ryde Home",card:"15",cardName:"Ryde",category:"Transport",claimable:true,createdAt:1743408000000,sortOrder:0,isSgdOnly:true},
 ];
 
+const SEED_PAST_TRIPS = [{
+  id:"us-mar-2026", name:"US Work Trip Mar 2026", currency:"USD", type:"work", dateFormat:"dd/mm", createdAt:1741852800000, endedAt:1743408000000,
+  expenses: SEED_EXPENSES
+}];
+
 // ─── Storage ───────────────────────────────────────────
-function load(key, fallback) {
+let currentUser = null;
+let saveTimer = null;
+
+// localStorage cache (for fast load and offline)
+function loadLocal(key, fallback) {
   try { const v = localStorage.getItem("tengtrip-" + key); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 }
-function save(key, value) {
+function saveLocal(key, value) {
   try { localStorage.setItem("tengtrip-" + key, JSON.stringify(value)); } catch(e) { console.error(e); }
 }
-function loadState() {
-  state.trip = load("trip", null);
-  state.expenses = load("expenses", []);
-  state.cards = load("cards", DEFAULT_CARDS);
-  state.pastTrips = load("past-trips", []);
-  if (!state.trip) { state.trip = DEFAULT_TRIP; save("trip", DEFAULT_TRIP); }
-  // Seed expenses on first load
-  if (state.expenses.length === 0) { state.expenses = SEED_EXPENSES; save("expenses", state.expenses); }
+
+// Firebase operations
+async function loadFromFirebase() {
+  if (!currentUser) return false;
+  try {
+    const { db, doc, getDoc } = window.FB;
+    const snap = await getDoc(doc(db, "users", currentUser.uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      state.trip = data.trip || null;
+      state.expenses = data.expenses || [];
+      state.cards = data.cards || DEFAULT_CARDS;
+      state.pastTrips = data.pastTrips || [];
+      // Cache locally
+      saveLocal("trip", state.trip);
+      saveLocal("expenses", state.expenses);
+      saveLocal("cards", state.cards);
+      saveLocal("past-trips", state.pastTrips);
+      return true;
+    }
+    return false;
+  } catch(e) { console.error("Firebase load error:", e); return false; }
 }
+
+async function saveToFirebase() {
+  if (!currentUser) return;
+  try {
+    const { db, doc, setDoc } = window.FB;
+    await setDoc(doc(db, "users", currentUser.uid), {
+      trip: state.trip,
+      expenses: state.expenses,
+      cards: state.cards,
+      pastTrips: state.pastTrips,
+      updatedAt: Date.now(),
+    });
+    showSyncStatus("Synced");
+  } catch(e) { console.error("Firebase save error:", e); showSyncStatus("Sync failed"); }
+}
+
+function showSyncStatus(msg) {
+  const el = document.getElementById("sync-status");
+  if (el) { el.textContent = msg; setTimeout(() => { el.textContent = ""; }, 2000); }
+}
+
+function loadState() {
+  // Only load from localStorage as a quick cache — Firebase overwrites this on auth
+  state.trip = loadLocal("trip", null);
+  state.expenses = loadLocal("expenses", []);
+  state.cards = loadLocal("cards", DEFAULT_CARDS);
+  state.pastTrips = loadLocal("past-trips", []);
+}
+
 function persist() {
-  save("trip", state.trip);
-  save("expenses", state.expenses);
-  save("cards", state.cards);
-  save("past-trips", state.pastTrips);
+  // Save to localStorage immediately
+  saveLocal("trip", state.trip);
+  saveLocal("expenses", state.expenses);
+  saveLocal("cards", state.cards);
+  saveLocal("past-trips", state.pastTrips);
+  // Debounce Firebase save
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveToFirebase(), 1000);
 }
 
 // ─── Helpers ───────────────────────────────────────────
@@ -1184,8 +1288,70 @@ document.querySelectorAll(".nav button").forEach(b => {
 });
 
 // ─── Init ──────────────────────────────────────────────
-loadState();
-render();
+// Auth flow
+document.getElementById("google-signin")?.addEventListener("click", async () => {
+  const statusEl = document.getElementById("auth-status");
+  try {
+    statusEl.textContent = "Signing in...";
+    const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch(e) {
+    statusEl.textContent = "Sign-in failed: " + e.message;
+  }
+});
+
+document.getElementById("signout-btn")?.addEventListener("click", async () => {
+  const { auth, signOut } = window.FB;
+  await signOut(auth);
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("auth-screen").classList.remove("hidden");
+});
+
+// Wait for Firebase to load, then listen for auth
+function initAuth() {
+  if (!window.FB) { setTimeout(initAuth, 100); return; }
+  const { auth, onAuthStateChanged } = window.FB;
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      currentUser = user;
+      document.getElementById("auth-screen").classList.add("hidden");
+      document.getElementById("app").classList.remove("hidden");
+      document.getElementById("user-email").textContent = user.email;
+
+      // Load from Firebase
+      const hasCloud = await loadFromFirebase();
+      if (hasCloud) {
+        if (!state.trip) { state.currentView = "setup"; }
+        render();
+        showSyncStatus("Synced from cloud");
+      } else {
+        // No cloud data — check if we have local data to upload
+        loadState();
+        if (state.expenses.length > 0 || state.trip) {
+          // Upload existing local data to cloud
+          await saveToFirebase();
+          render();
+          showSyncStatus("Uploaded to cloud");
+        } else {
+          // Truly first time — seed past trips
+          state.trip = null;
+          state.expenses = [];
+          state.cards = DEFAULT_CARDS;
+          state.pastTrips = SEED_PAST_TRIPS;
+          state.currentView = "setup";
+          persist();
+          render();
+          showSyncStatus("Welcome!");
+        }
+      }
+    } else {
+      currentUser = null;
+      document.getElementById("auth-screen").classList.remove("hidden");
+      document.getElementById("app").classList.add("hidden");
+    }
+  });
+}
+initAuth();
 </script>
 </body>
 </html>
