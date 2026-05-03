@@ -290,6 +290,7 @@ const DEFAULT_CARDS = [
   { id:"14", name:"Cash", shortcut:"cash", autoCalc:false },
   { id:"15", name:"Ryde", shortcut:"ryde", autoCalc:true },
   { id:"16", name:"Revo", shortcut:"revo", autoCalc:false },
+  { id:"17", name:"Maribank", shortcut:"mari", autoCalc:false },
 ];
 
 const DEFAULT_TRIP = { id:"us-mar-2026", name:"US Work Trip Mar 2026", currency:"USD", type:"work", dateFormat:"dd/mm", createdAt:Date.now() };
@@ -612,7 +613,7 @@ function renderExpenses() {
   // Quick entry
   html += '<div class="quick-entry">';
   html += '<div class="input-row">';
-  html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 55.95 uber to nyse prestige" ${state.pendingExpense ? 'disabled' : ''}>`;
+  html += `<input class="main-input" id="expense-input" type="text" placeholder="amount description card" ${state.pendingExpense ? 'disabled' : ''}>`;
   html += '</div>';
   // Claim prompt
   if (state.pendingExpense) {
@@ -1055,9 +1056,18 @@ function renderSetup() {
   let h = '<div class="setup-card">';
   h += '<h2 class="setup-title">New Trip</h2>';
   h += '<label class="setup-label">Trip Name</label>';
-  h += '<input class="setup-input" id="setup-name" placeholder="e.g. US Work Trip Mar 2026">';
+  h += '<input class="setup-input" id="setup-name" placeholder="e.g. Japan Holiday Dec 2026">';
   h += '<label class="setup-label">Foreign Currency</label>';
-  h += '<input class="setup-input" id="setup-currency" placeholder="USD" maxlength="3">';
+  h += '<select class="setup-input" id="setup-currency">';
+  h += '<option value="">Select currency</option>';
+  const currencies = [
+    "AED","AUD","BND","CAD","CHF","CNY","CZK","DKK","EUR","GBP",
+    "HKD","HUF","IDR","INR","ISK","JPY","KHR","KRW","LAK","LKR",
+    "MAD","MMK","MXN","MYR","NOK","NZD","PHP","PLN","QAR","RON",
+    "SAR","SEK","SGD","THB","TRY","TWD","USD","VND","ZAR"
+  ];
+  currencies.forEach(cur => { h += `<option value="${cur}">${cur}</option>`; });
+  h += '</select>';
   h += '<label class="setup-label">Trip Type</label>';
   h += '<div class="type-toggle"><button class="type-btn active" id="type-personal" data-type="personal">Personal</button><button class="type-btn" id="type-work" data-type="work">Work</button></div>';
   h += '<label class="setup-label">Date Format</label>';
@@ -1082,7 +1092,7 @@ function renderSetup() {
   });
   document.getElementById("setup-save")?.addEventListener("click", () => {
     const name = document.getElementById("setup-name").value.trim();
-    const cur = document.getElementById("setup-currency").value.trim().toUpperCase();
+    const cur = document.getElementById("setup-currency").value;
     if (!name || !cur) return;
     state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, createdAt:Date.now() };
     state.expenses = [];
