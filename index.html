@@ -319,6 +319,8 @@ let state = {
   isSwiping: false,
   lastPreview: null,
   swapped: false,
+  isHistorical: false,
+  editingEnabled: false,
 };
 const deleteTimers = {};
 
@@ -586,7 +588,8 @@ function render() {
   const navEl = document.getElementById("nav");
   if (t) {
     navEl.innerHTML = '';
-    ["expenses","dashboard","cards","history"].forEach(v => {
+    const tabs = state.isHistorical ? ["expenses","dashboard","history"] : ["expenses","dashboard","cards","history"];
+    tabs.forEach(v => {
       const label = v === "dashboard" ? "Summary" : v.charAt(0).toUpperCase() + v.slice(1);
       const btn = document.createElement("button");
       btn.textContent = label;
@@ -630,29 +633,46 @@ function renderExpenses() {
   sorted.forEach(e => { if (!grouped[e.date]) grouped[e.date]=[]; grouped[e.date].push(e); });
 
   let html = '';
-  // Quick entry
-  html += '<div class="quick-entry">';
-  html += '<div class="input-row">';
-  html += `<input class="main-input" id="expense-input" type="text" placeholder="amount description card" ${state.pendingExpense ? 'disabled' : ''}>`;
-  html += '</div>';
-  // Claim prompt
-  if (state.pendingExpense) {
-    const pe = state.pendingExpense;
-    html += '<div class="claim-prompt">';
-    const peAmtText = pe.isSgdOnly ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
-    html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
-    html += '<div class="claim-buttons">';
-    html += '<button class="claim-yes" id="claim-yes">Yes</button>';
-    html += '<button class="claim-no" id="claim-no">No</button>';
-    html += '</div></div>';
+  const isReadOnly = state.isHistorical && !state.editingEnabled;
+
+  // Edit Trip / Back to History bar for historical trips
+  if (state.isHistorical) {
+    html += '<div style="padding:12px 16px;display:flex;gap:8px;border-bottom:1px solid var(--border);">';
+    if (!state.editingEnabled) {
+      html += '<button class="export-btn" id="edit-trip-btn" style="flex:1;">Edit Trip</button>';
+    } else {
+      html += '<div style="flex:1;font-size:12px;color:var(--warn);display:flex;align-items:center;">Editing enabled</div>';
+      html += '<button class="export-btn" id="lock-trip-btn" style="flex:0 0 auto;padding:8px 16px;">Lock</button>';
+    }
+    html += '<button class="export-btn" id="back-to-history" style="flex:1;">Back to History</button>';
+    html += '</div>';
   }
-  // Preview
-  html += '<div class="preview" id="preview"></div>';
-  html += '</div>';
+
+  // Quick entry — only for active trips or historical with editing enabled
+  if (!isReadOnly) {
+    html += '<div class="quick-entry">';
+    html += '<div class="input-row">';
+    html += `<input class="main-input" id="expense-input" type="text" placeholder="amount description card" ${state.pendingExpense ? 'disabled' : ''}>`;
+    html += '</div>';
+    // Claim prompt
+    if (state.pendingExpense) {
+      const pe = state.pendingExpense;
+      html += '<div class="claim-prompt">';
+      const peAmtText = pe.isSgdOnly ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
+      html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
+      html += '<div class="claim-buttons">';
+      html += '<button class="claim-yes" id="claim-yes">Yes</button>';
+      html += '<button class="claim-no" id="claim-no">No</button>';
+      html += '</div></div>';
+    }
+    // Preview
+    html += '<div class="preview" id="preview"></div>';
+    html += '</div>';
+  }
 
   // Expenses list
   if (Object.keys(grouped).length === 0) {
-    html += '<div class="empty">No expenses yet. Start typing above.</div>';
+    html += '<div class="empty">No expenses yet.</div>';
   } else {
     for (const [date, exps] of Object.entries(grouped)) {
       const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
@@ -665,13 +685,18 @@ function renderExpenses() {
           html += `<div class="expense-deleted"><span>${esc(e.description)}</span><button class="undo-btn" data-undo="${e.id}">Undo</button></div>`;
           continue;
         }
-        if (state.editingId === e.id) {
+        if (state.editingId === e.id && !isReadOnly) {
           html += renderEditForm(e);
           continue;
         }
-        html += `<div class="swipe-container" data-swipe="${e.id}">`;
-        html += `<div class="swipe-delete-bg"><span>Delete</span></div>`;
-        html += `<div class="expense-item" data-edit="${e.id}" data-id="${e.id}" data-date="${e.date}">`;
+        if (isReadOnly) {
+          // Read-only item — no swipe, no drag
+          html += `<div class="expense-item" data-id="${e.id}" data-date="${e.date}">`;
+        } else {
+          html += `<div class="swipe-container" data-swipe="${e.id}">`;
+          html += `<div class="swipe-delete-bg"><span>Delete</span></div>`;
+          html += `<div class="expense-item" data-edit="${e.id}" data-id="${e.id}" data-date="${e.date}">`;
+        }
         html += '<div class="expense-left">';
         html += `<span class="expense-desc">${esc(e.description || "—")}</span>`;
         html += '<div class="expense-meta">';
@@ -691,8 +716,12 @@ function renderExpenses() {
           }
         }
         html += '</div>';
-        html += `<span class="drag-handle" data-drag="${e.id}">≡</span>`;
-        html += '</div></div>';
+        if (!isReadOnly) {
+          html += `<span class="drag-handle" data-drag="${e.id}">≡</span>`;
+          html += '</div></div>';
+        } else {
+          html += '</div>';
+        }
       }
     }
   }
@@ -701,7 +730,9 @@ function renderExpenses() {
   if (state.expenses.length > 0) {
     html += '<div class="bottom-actions">';
     html += '<button class="export-btn" id="toggle-csv">Export CSV</button>';
-    html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
+    if (!state.isHistorical) {
+      html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
+    }
     html += '</div>';
     if (state.showCsv) {
       const csv = generateCsv();
@@ -742,6 +773,35 @@ function renderEditForm(e) {
 }
 
 function bindExpenseEvents() {
+  const isReadOnly = state.isHistorical && !state.editingEnabled;
+
+  // Historical trip buttons
+  const editTripBtn = document.getElementById("edit-trip-btn");
+  if (editTripBtn) editTripBtn.addEventListener("click", () => {
+    if (confirm("Are you sure you want to edit this trip?")) {
+      state.editingEnabled = true;
+      render();
+    }
+  });
+  const lockTripBtn = document.getElementById("lock-trip-btn");
+  if (lockTripBtn) lockTripBtn.addEventListener("click", () => {
+    state.editingEnabled = false;
+    state.editingId = null;
+    render();
+  });
+  const backToHistory = document.getElementById("back-to-history");
+  if (backToHistory) backToHistory.addEventListener("click", () => {
+    // Save trip back to past trips
+    if (state.trip) {
+      state.pastTrips.push({ ...state.trip, expenses: state.expenses, endedAt: Date.now() });
+    }
+    state.trip = null;
+    state.expenses = [];
+    state.isHistorical = false;
+    state.editingEnabled = false;
+    persist(); state.currentView = "history"; render();
+  });
+
   const input = document.getElementById("expense-input");
   if (input) {
     input.addEventListener("input", () => updatePreview(input.value));
@@ -754,6 +814,7 @@ function bindExpenseEvents() {
   if (cn) cn.addEventListener("click", () => resolveClaim(false));
   document.querySelectorAll("[data-edit]").forEach(el => {
     el.addEventListener("click", (ev) => {
+      if (isReadOnly) return;
       if (ev.target.classList.contains("drag-handle")) return;
       if (state.isDragging || state.isSwiping) return;
       state.editingId = el.dataset.edit; render();
@@ -762,10 +823,11 @@ function bindExpenseEvents() {
   document.querySelectorAll("[data-undo]").forEach(el => {
     el.addEventListener("click", () => undoDelete(el.dataset.undo));
   });
-  // Drag and drop
-  initDragAndDrop();
-  // Swipe to delete
-  initSwipeToDelete();
+  // Drag and drop + swipe only when not read-only
+  if (!isReadOnly) {
+    initDragAndDrop();
+    initSwipeToDelete();
+  }
   const saveEdit = document.getElementById("save-edit");
   if (saveEdit) saveEdit.addEventListener("click", () => {
     const id = saveEdit.dataset.id;
@@ -1088,6 +1150,8 @@ function renderHistory() {
         state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, createdAt:pt.createdAt };
         state.expenses = pt.expenses || [];
         state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
+        state.isHistorical = true;
+        state.editingEnabled = false;
         persist(); state.currentView="dashboard"; render();
       }
     });
@@ -1139,6 +1203,8 @@ function renderSetup() {
     if (!name || !cur) return;
     state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, createdAt:Date.now() };
     state.expenses = [];
+    state.isHistorical = false;
+    state.editingEnabled = false;
     persist(); state.currentView = "expenses"; render();
   });
 }
