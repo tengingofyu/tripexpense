@@ -557,8 +557,7 @@ function parseInput(text, cards, trip) {
     sgdAmount = amounts[0].value;
   } else {
     foreignAmount = amounts[0].value;
-    if (amounts.length >= 2 && foundCard && foundCard.autoCalc) sgdAmount = amounts[1].value;
-    else if (amounts.length >= 2 && !foundCard) sgdAmount = amounts[1].value;
+    if (amounts.length >= 2) sgdAmount = amounts[1].value;
   }
 
   // Build description
@@ -978,6 +977,31 @@ function renderDashboard() {
     });
     h += '</div>';
   }
+
+  // Daily breakdown by card
+  const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => a.localeCompare(b));
+  if (dates.length) {
+    h += '<div class="breakdown"><div class="breakdown-title">By Day</div>';
+    dates.forEach(date => {
+      const dayExps = exps.filter(e => e.date === date);
+      const dayF = dayExps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+      const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+      // Day header
+      h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayF)}</span><span class="breakdown-val" style="color:var(--accent);">S$${fmt(daySgd)}</span></div>`;
+      // Card subtotals for this day
+      const dayByCard = {}, dayByCardSgd = {};
+      dayExps.forEach(e => {
+        const n = e.cardName || "Unknown";
+        dayByCard[n] = (dayByCard[n]||0) + (e.isSgdOnly ? 0 : e.amount);
+        dayByCardSgd[n] = (dayByCardSgd[n]||0) + (e.sgdAmount || 0);
+      });
+      Object.entries(dayByCard).sort((a,b) => b[1]-a[1]).forEach(([n,a]) => {
+        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">$${fmt(a)}</span><span class="breakdown-val" style="font-size:11px;">S$${fmt(dayByCardSgd[n]||0)}</span></div>`;
+      });
+    });
+    h += '</div>';
+  }
+
   h += '</div>';
   document.getElementById("view-dashboard").innerHTML = h;
 }
@@ -986,12 +1010,11 @@ function renderDashboard() {
 function renderCards() {
   let h = '<div class="card-manager"><h3 class="section-title">Payment Methods</h3>';
   state.cards.forEach(c => {
-    h += `<div class="card-row"><span class="name">${esc(c.name)}</span><span class="shortcut">${esc(c.shortcut)}</span><span class="auto">${c.autoCalc?"SGD auto":"—"}</span><button class="remove" data-remove-card="${c.id}">×</button></div>`;
+    h += `<div class="card-row"><span class="name">${esc(c.name)}</span><span class="shortcut">${esc(c.shortcut)}</span><button class="remove" data-remove-card="${c.id}">×</button></div>`;
   });
   h += '<div class="add-card-row">';
   h += '<input class="name-input" id="new-card-name" placeholder="Card name">';
   h += '<input class="shortcut-input" id="new-card-shortcut" placeholder="Shortcut">';
-  h += '<label class="add-card-check"><input type="checkbox" id="new-card-auto"> SGD</label>';
   h += '<button class="add-card-btn" id="add-card">Add</button>';
   h += '</div>';
   h += '<button class="save-cards-btn" id="save-cards">Save Cards</button>';
@@ -1019,8 +1042,7 @@ function renderCards() {
   document.getElementById("add-card")?.addEventListener("click", () => {
     const n = document.getElementById("new-card-name").value.trim();
     const s = document.getElementById("new-card-shortcut").value.trim().toLowerCase();
-    const a = document.getElementById("new-card-auto").checked;
-    if (n && s) { state.cards.push({ id:genId(), name:n, shortcut:s, autoCalc:a }); persist(); render(); }
+    if (n && s) { state.cards.push({ id:genId(), name:n, shortcut:s }); persist(); render(); }
   });
   document.getElementById("save-cards")?.addEventListener("click", () => { persist(); const st = document.getElementById("backup-status"); if(st) { st.textContent="Cards saved!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2000); } });
   document.getElementById("copy-backup")?.addEventListener("click", () => {
