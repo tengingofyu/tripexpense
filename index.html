@@ -11,7 +11,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCHoMZNv-o4VssCeSjAFKDb2iRpb1QXwQ0",
@@ -27,7 +27,7 @@ const db = getFirestore(fbApp);
 const auth = getAuth(fbApp);
 
 // Expose to global scope for the non-module script
-window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
+window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
 <style>
 :root {
@@ -48,6 +48,9 @@ window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: min(480px, 100vw); margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-top: env(safe-area-inset-top); }
 input, select, textarea, button { font-family: inherit; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
 
 /* Header */
 .header { padding: 20px 16px 12px; padding-top: calc(env(safe-area-inset-top, 44px) + 12px); border-bottom: 1px solid var(--border); }
@@ -583,16 +586,26 @@ function render() {
   const t = state.trip;
   // Header
   document.getElementById("trip-badge").textContent = t ? (t.type==="work" ? "Work" : "Personal") : "";
-  document.getElementById("trip-name").textContent = t ? t.name + " · " + t.currency : "";
-  document.getElementById("nav").classList.toggle("hidden", !t);
-  // Nav active
-  document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("active", b.dataset.view === state.currentView));
+  document.getElementById("trip-name").textContent = t ? t.name + " · " + t.currency : "No active trip";
+  // Always show nav, but highlight available tabs
+  document.getElementById("nav").classList.remove("hidden");
+  document.querySelectorAll(".nav button").forEach(b => {
+    b.classList.toggle("active", b.dataset.view === state.currentView);
+    // Disable expense/summary/cards tabs when no trip
+    if (!t && ["expenses","dashboard","cards"].includes(b.dataset.view)) {
+      b.style.opacity = "0.3";
+      b.style.pointerEvents = "none";
+    } else {
+      b.style.opacity = "1";
+      b.style.pointerEvents = "auto";
+    }
+  });
   // Views
   ["expenses","dashboard","cards","history","setup"].forEach(v => {
     const el = document.getElementById("view-"+v);
     if (el) el.classList.toggle("hidden", state.currentView !== v);
   });
-  if (!t && state.currentView !== "setup" && state.currentView !== "history") { state.currentView = "setup"; render(); return; }
+  if (!t && !["setup","history"].includes(state.currentView)) { state.currentView = "history"; render(); return; }
   if (state.currentView === "expenses") renderExpenses();
   else if (state.currentView === "dashboard") renderDashboard();
   else if (state.currentView === "cards") renderCards();
@@ -710,7 +723,9 @@ function renderEditForm(e) {
   html += '<select class="edit-select" id="edit-category">';
   CATEGORIES.forEach(c => { html += `<option value="${c.name}" ${e.category===c.name?'selected':''}>${c.name}</option>`; });
   html += '</select>';
-  html += `<label class="edit-claim-label"><input type="checkbox" id="edit-claimable" ${e.claimable?'checked':''}> Claimable</label>`;
+  if (state.trip && state.trip.type === "work") {
+    html += `<label class="edit-claim-label"><input type="checkbox" id="edit-claimable" ${e.claimable?'checked':''}> Claimable</label>`;
+  }
   html += '</div>';
   html += '<div class="edit-actions">';
   html += `<button class="save-btn" id="save-edit" data-id="${e.id}">Save</button>`;
@@ -759,7 +774,7 @@ function bindExpenseEvents() {
         card: cardId || null,
         cardName: state.cards.find(c=>c.id===cardId)?.name || "Unknown",
         category: document.getElementById("edit-category").value,
-        claimable: document.getElementById("edit-claimable").checked,
+        claimable: document.getElementById("edit-claimable")?.checked || false,
       };
       persist();
     }
@@ -786,7 +801,7 @@ function bindExpenseEvents() {
       state.pastTrips.push({ ...state.trip, expenses: state.expenses, endedAt: Date.now() });
     }
     state.trip = null; state.expenses = []; state.showCsv = false;
-    persist(); state.currentView = "setup"; render();
+    persist(); state.currentView = "history"; render();
   });
 }
 
@@ -1304,8 +1319,13 @@ document.getElementById("google-signin")?.addEventListener("click", async () => 
   const statusEl = document.getElementById("auth-status");
   try {
     statusEl.textContent = "Signing in...";
-    const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    const { auth, signInWithPopup, signInWithRedirect, GoogleAuthProvider } = window.FB;
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      await signInWithRedirect(auth, new GoogleAuthProvider());
+    } else {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    }
   } catch(e) {
     statusEl.textContent = "Sign-in failed: " + e.message;
   }
@@ -1321,7 +1341,14 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
 // Wait for Firebase to load, then listen for auth
 function initAuth() {
   if (!window.FB) { setTimeout(initAuth, 100); return; }
-  const { auth, onAuthStateChanged } = window.FB;
+  const { auth, onAuthStateChanged, getRedirectResult } = window.FB;
+
+  // Handle redirect result (for mobile sign-in)
+  getRedirectResult(auth).catch(e => {
+    const statusEl = document.getElementById("auth-status");
+    if (statusEl && e.code !== "auth/null-user") statusEl.textContent = "Sign-in failed: " + e.message;
+  });
+
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       currentUser = user;
