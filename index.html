@@ -259,12 +259,7 @@ input[type="number"] { -moz-appearance: textfield; }
   </div>
 
   <!-- Nav -->
-  <div class="nav" id="nav">
-    <button class="active" data-view="expenses">Expenses</button>
-    <button data-view="dashboard">Summary</button>
-    <button data-view="cards">Cards</button>
-    <button data-view="history">History</button>
-  </div>
+  <div class="nav" id="nav"></div>
 
   <!-- Views -->
   <div id="view-expenses"></div>
@@ -587,19 +582,32 @@ function render() {
   // Header
   document.getElementById("trip-badge").textContent = t ? (t.type==="work" ? "Work" : "Personal") : "";
   document.getElementById("trip-name").textContent = t ? t.name + " · " + t.currency : "No active trip";
-  // Always show nav, but highlight available tabs
+  // Nav - show different tabs based on whether trip is active
   document.getElementById("nav").classList.remove("hidden");
-  document.querySelectorAll(".nav button").forEach(b => {
-    b.classList.toggle("active", b.dataset.view === state.currentView);
-    // Disable expense/summary/cards tabs when no trip
-    if (!t && ["expenses","dashboard","cards"].includes(b.dataset.view)) {
-      b.style.opacity = "0.3";
-      b.style.pointerEvents = "none";
-    } else {
-      b.style.opacity = "1";
-      b.style.pointerEvents = "auto";
-    }
-  });
+  const navEl = document.getElementById("nav");
+  if (t) {
+    navEl.innerHTML = '';
+    ["expenses","dashboard","cards","history"].forEach(v => {
+      const label = v === "dashboard" ? "Summary" : v.charAt(0).toUpperCase() + v.slice(1);
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.dataset.view = v;
+      if (v === state.currentView) btn.classList.add("active");
+      btn.addEventListener("click", () => { state.currentView = v; state.editingId = null; state.showCsv = false; render(); });
+      navEl.appendChild(btn);
+    });
+  } else {
+    navEl.innerHTML = '';
+    ["history","setup"].forEach(v => {
+      const label = v === "setup" ? "New Trip" : "History";
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.dataset.view = v;
+      if (v === state.currentView) btn.classList.add("active");
+      btn.addEventListener("click", () => { state.currentView = v; render(); });
+      navEl.appendChild(btn);
+    });
+  }
   // Views
   ["expenses","dashboard","cards","history","setup"].forEach(v => {
     const el = document.getElementById("view-"+v);
@@ -1048,7 +1056,6 @@ function renderHistory() {
       h += `<div class="past-trip"><div><div class="past-trip-name">${esc(pt.name)}</div><div class="past-trip-meta">${esc(pt.currency)} · ${pt.expenses?.length||0} expenses · ${pt.type}</div></div><button class="load-btn" data-load="${pt.id}">Reopen</button></div>`;
     });
   }
-  if (!state.trip) h += '<button class="new-trip-btn" id="new-trip-btn">+ New Trip</button>';
   h += '</div>';
   document.getElementById("view-history").innerHTML = h;
 
@@ -1059,11 +1066,10 @@ function renderHistory() {
         state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, createdAt:pt.createdAt };
         state.expenses = pt.expenses || [];
         state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
-        persist(); state.currentView="expenses"; render();
+        persist(); state.currentView="dashboard"; render();
       }
     });
   });
-  document.getElementById("new-trip-btn")?.addEventListener("click", () => { state.currentView="setup"; render(); });
 }
 
 // ─── Setup ─────────────────────────────────────────────
@@ -1307,11 +1313,6 @@ function initSwipeToDelete() {
     });
   });
 }
-
-// ─── Nav binding ───────────────────────────────────────
-document.querySelectorAll(".nav button").forEach(b => {
-  b.addEventListener("click", () => { state.currentView = b.dataset.view; state.editingId = null; state.showCsv = false; render(); });
-});
 
 // ─── Init ──────────────────────────────────────────────
 // Auth flow
