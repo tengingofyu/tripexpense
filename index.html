@@ -239,6 +239,7 @@ input[type="number"] { -moz-appearance: textfield; }
     <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"> Sign in with Google
   </button>
   <div class="auth-status" id="auth-status"></div>
+  <button id="offline-btn" style="margin-top:24px;background:none;border:1px solid var(--border);border-radius:8px;padding:12px 28px;color:var(--text-dim);font-size:13px;cursor:pointer;font-family:inherit;">Use offline</button>
 </div>
 
 <div id="app" class="hidden">
@@ -1425,6 +1426,17 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   await signOut(auth);
   document.getElementById("app").classList.add("hidden");
   document.getElementById("auth-screen").classList.remove("hidden");
+});
+
+document.getElementById("offline-btn")?.addEventListener("click", () => {
+  document.getElementById("auth-screen").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("user-email").textContent = "Offline mode";
+  document.getElementById("signout-btn").style.display = "none";
+  loadState();
+  if (!state.trip) { state.currentView = "history"; }
+  render();
+  showSyncStatus("Offline — data saved locally only");
 });
 
 // Wait for Firebase to load, then listen for auth
