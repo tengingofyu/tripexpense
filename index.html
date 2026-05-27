@@ -1432,10 +1432,12 @@ function initAuth() {
   if (!window.FB) { setTimeout(initAuth, 100); return; }
   const { auth, onAuthStateChanged, getRedirectResult } = window.FB;
 
-  // Handle redirect result (for mobile sign-in)
-  getRedirectResult(auth).catch(e => {
-    const statusEl = document.getElementById("auth-status");
-    if (statusEl && e.code !== "auth/null-user") statusEl.textContent = "Sign-in failed: " + e.message;
+  // Handle redirect result first (for mobile sign-in)
+  getRedirectResult(auth).then(result => {
+    // Redirect completed — onAuthStateChanged will handle the rest
+  }).catch(e => {
+    console.error("Redirect result error:", e);
+    // Don't block on errors — onAuthStateChanged will still fire if user is cached
   });
 
   onAuthStateChanged(auth, async (user) => {
@@ -1446,30 +1448,36 @@ function initAuth() {
       document.getElementById("user-email").textContent = user.email;
 
       // Load from Firebase
-      const hasCloud = await loadFromFirebase();
-      if (hasCloud) {
-        if (!state.trip) { state.currentView = "setup"; }
-        render();
-        showSyncStatus("Synced from cloud");
-      } else {
-        // No cloud data — check if we have local data to upload
-        loadState();
-        if (state.expenses.length > 0 || state.trip) {
-          // Upload existing local data to cloud
-          await saveToFirebase();
+      try {
+        const hasCloud = await loadFromFirebase();
+        if (hasCloud) {
+          if (!state.trip) { state.currentView = "history"; }
           render();
-          showSyncStatus("Uploaded to cloud");
+          showSyncStatus("Synced from cloud");
         } else {
-          // Truly first time — seed past trips
-          state.trip = null;
-          state.expenses = [];
-          state.cards = DEFAULT_CARDS;
-          state.pastTrips = SEED_PAST_TRIPS;
-          state.currentView = "setup";
-          persist();
-          render();
-          showSyncStatus("Welcome!");
+          // No cloud data — check if we have local data to upload
+          loadState();
+          if (state.expenses.length > 0 || state.trip) {
+            await saveToFirebase();
+            render();
+            showSyncStatus("Uploaded to cloud");
+          } else {
+            state.trip = null;
+            state.expenses = [];
+            state.cards = DEFAULT_CARDS;
+            state.pastTrips = SEED_PAST_TRIPS;
+            state.currentView = "history";
+            persist();
+            render();
+            showSyncStatus("Welcome!");
+          }
         }
+      } catch(e) {
+        console.error("Load error:", e);
+        // Fallback to local data
+        loadState();
+        render();
+        showSyncStatus("Offline mode");
       }
     } else {
       currentUser = null;
