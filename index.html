@@ -102,8 +102,13 @@ input[type="number"] { -moz-appearance: textfield; }
 .expense-item.drag-over-bottom { border-bottom: 2px solid var(--accent); margin-bottom: -2px; background: rgba(59,130,246,0.15); }
 .day-header.drag-over { border-bottom: 2px solid var(--accent); background: rgba(59,130,246,0.1); }
 
-/* Swipe to delete */
-.swipe-container { position: relative; overflow: hidden; }
+/* iOS-style drag: collapsed source + gap at target */
+.swipe-container { position: relative; overflow: hidden; transition: max-height 0.2s ease, margin 0.2s ease, opacity 0.2s ease; }
+.swipe-container.drag-collapsed { max-height: 0 !important; opacity: 0; margin: 0; padding: 0; overflow: hidden; }
+.swipe-container.drag-gap-above { margin-top: 52px; }
+.swipe-container.drag-gap-below { margin-bottom: 52px; }
+.day-header { transition: margin 0.2s ease; }
+.day-header.drag-gap-below { margin-bottom: 52px; }
 .swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; }
 .swipe-container .expense-item { position: relative; z-index: 1; background: var(--bg); transition: none; }
 .expense-left { flex: 1; min-width: 0; }
@@ -227,7 +232,9 @@ input[type="number"] { -moz-appearance: textfield; }
 .auth-btn { display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .auth-btn img { width: 20px; height: 20px; }
 .auth-status { font-size: 12px; color: var(--danger); margin-top: 12px; }
-.user-info { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); padding: 4px 16px; }
+.user-info { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 4px 16px; }
+.user-info.online { color: var(--success); }
+.user-info.offline { color: var(--danger); }
 .signout-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; }
 .sync-indicator { font-size: 10px; color: var(--success); padding: 0 16px 4px; }
 </style>
@@ -324,6 +331,7 @@ let state = {
   swapped: false,
   isHistorical: false,
   editingEnabled: false,
+  isOffline: false,
 };
 const deleteTimers = {};
 
@@ -847,6 +855,7 @@ function bindExpenseEvents() {
         cardName: state.cards.find(c=>c.id===cardId)?.name || "Unknown",
         category: document.getElementById("edit-category").value,
         claimable: document.getElementById("edit-claimable")?.checked || false,
+        updatedAt: Date.now(),
       };
       persist();
     }
@@ -947,7 +956,7 @@ function submitExpense(val) {
     id: genId(), date: expDate, amount: p.isSgdOnly ? 0 : p.amount, sgdAmount: p.sgdAmount,
     currency: state.trip.currency, description: p.description,
     card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
-    category: p.category, claimable: false, createdAt: Date.now(), sortOrder: 0,
+    category: p.category, claimable: false, createdAt: Date.now(), updatedAt: Date.now(), sortOrder: 0,
     isSgdOnly: p.isSgdOnly || false,
   };
   state.lastPreview = null;
@@ -1237,7 +1246,10 @@ function initDragAndDrop() {
   function startDrag(id, item, clientY) {
     dragStarted = true;
     state.isDragging = true;
-    item.classList.add("dragging");
+    // Collapse the source item's container
+    const sourceContainer = item.closest(".swipe-container");
+    if (sourceContainer) sourceContainer.classList.add("drag-collapsed");
+    // Create floating clone
     dragClone = item.cloneNode(true);
     dragClone.style.cssText = "position:fixed;left:8px;right:8px;width:" + item.offsetWidth + "px;z-index:1000;opacity:0.9;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
     dragClone.style.top = (clientY - 30) + "px";
@@ -1248,7 +1260,10 @@ function initDragAndDrop() {
   function moveDrag(clientX, clientY) {
     if (!dragStarted || !dragClone) return;
     dragClone.style.top = (clientY - 30) + "px";
-    document.querySelectorAll(".drag-over-top,.drag-over-bottom,.drag-over").forEach(el => { el.classList.remove("drag-over-top"); el.classList.remove("drag-over-bottom"); el.classList.remove("drag-over"); });
+    // Clear previous gap indicators
+    document.querySelectorAll(".drag-over-top,.drag-over-bottom,.drag-over,.drag-gap-above,.drag-gap-below").forEach(el => {
+      el.classList.remove("drag-over-top","drag-over-bottom","drag-over","drag-gap-above","drag-gap-below");
+    });
     // Hide clone briefly to find element below
     dragClone.style.display = "none";
     const elBelow = document.elementFromPoint(clientX, clientY);
@@ -1257,12 +1272,15 @@ function initDragAndDrop() {
     const targetItem = elBelow.closest(".expense-item[data-id]");
     const targetDay = elBelow.closest(".day-header[data-dayheader]");
     if (targetItem && targetItem.dataset.id !== dragId) {
-      // Detect top or bottom half
       const rect = targetItem.getBoundingClientRect();
       const isBottomHalf = clientY > rect.top + rect.height / 2;
       targetItem.classList.add(isBottomHalf ? "drag-over-bottom" : "drag-over-top");
+      // Add gap on the swipe-container
+      const container = targetItem.closest(".swipe-container");
+      if (container) container.classList.add(isBottomHalf ? "drag-gap-below" : "drag-gap-above");
     } else if (targetDay) {
       targetDay.classList.add("drag-over");
+      targetDay.classList.add("drag-gap-below");
     }
     // Auto-scroll when near edges
     const edgeZone = 60;
@@ -1294,7 +1312,9 @@ function initDragAndDrop() {
 
   function cleanup() {
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
-    document.querySelectorAll(".dragging,.drag-over,.drag-over-top,.drag-over-bottom").forEach(el => { el.classList.remove("dragging"); el.classList.remove("drag-over"); el.classList.remove("drag-over-top"); el.classList.remove("drag-over-bottom"); });
+    document.querySelectorAll(".dragging,.drag-over,.drag-over-top,.drag-over-bottom,.drag-collapsed,.drag-gap-above,.drag-gap-below").forEach(el => {
+      el.classList.remove("dragging","drag-over","drag-over-top","drag-over-bottom","drag-collapsed","drag-gap-above","drag-gap-below");
+    });
     if (dragClone) { dragClone.remove(); dragClone = null; }
     dragId = null; dragEl = null; dragStarted = false;
     setTimeout(() => { state.isDragging = false; }, 100);
@@ -1451,12 +1471,14 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
 document.getElementById("offline-btn")?.addEventListener("click", () => {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
-  document.getElementById("user-email").textContent = "Offline mode";
+  document.getElementById("user-email").textContent = "Offline";
   document.getElementById("signout-btn").style.display = "none";
+  document.querySelector(".user-info").classList.add("offline");
+  document.querySelector(".user-info").classList.remove("online");
+  state.isOffline = true;
   loadState();
   if (!state.trip) { state.currentView = "history"; }
   render();
-  showSyncStatus("Offline — data saved locally only");
 });
 
 // Wait for Firebase to load, then listen for auth
@@ -1467,38 +1489,85 @@ function initAuth() {
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       currentUser = user;
+      state.isOffline = false;
       document.getElementById("auth-screen").classList.add("hidden");
       document.getElementById("app").classList.remove("hidden");
       document.getElementById("user-email").textContent = user.email;
+      document.getElementById("signout-btn").style.display = "";
+      document.querySelector(".user-info").classList.add("online");
+      document.querySelector(".user-info").classList.remove("offline");
 
-      // Load from Firebase
       try {
+        // Load both local and cloud data
+        const localTrip = loadLocal("trip", null);
+        const localExpenses = loadLocal("expenses", []);
+        const localCards = loadLocal("cards", DEFAULT_CARDS);
+        const localPastTrips = loadLocal("past-trips", []);
+
         const hasCloud = await loadFromFirebase();
-        if (hasCloud) {
-          if (!state.trip) { state.currentView = "history"; }
-          render();
+        const cloudTrip = hasCloud ? state.trip : null;
+        const cloudExpenses = hasCloud ? state.expenses : [];
+        const cloudCards = hasCloud ? state.cards : DEFAULT_CARDS;
+        const cloudPastTrips = hasCloud ? state.pastTrips : [];
+
+        // Merge: union of expenses by ID, prefer more recently updated version
+        const mergedExpenseMap = {};
+        localExpenses.forEach(e => { mergedExpenseMap[e.id] = e; });
+        cloudExpenses.forEach(e => {
+          const existing = mergedExpenseMap[e.id];
+          if (!existing) { mergedExpenseMap[e.id] = e; return; }
+          // Compare updatedAt (fallback to createdAt) — keep the newer one
+          const existingTime = existing.updatedAt || existing.createdAt || 0;
+          const cloudTime = e.updatedAt || e.createdAt || 0;
+          if (cloudTime >= existingTime) mergedExpenseMap[e.id] = e;
+        });
+        const mergedExpenses = Object.values(mergedExpenseMap);
+
+        // Merge past trips by ID, prefer more recently ended version
+        const mergedPastMap = {};
+        localPastTrips.forEach(pt => { mergedPastMap[pt.id] = pt; });
+        cloudPastTrips.forEach(pt => {
+          const existing = mergedPastMap[pt.id];
+          if (!existing) { mergedPastMap[pt.id] = pt; return; }
+          const existingTime = existing.endedAt || existing.createdAt || 0;
+          const cloudTime = pt.endedAt || pt.createdAt || 0;
+          if (cloudTime >= existingTime) mergedPastMap[pt.id] = pt;
+        });
+        const mergedPastTrips = Object.values(mergedPastMap);
+
+        // Merge cards by ID
+        const mergedCardMap = {};
+        localCards.forEach(c => { mergedCardMap[c.id] = c; });
+        cloudCards.forEach(c => { mergedCardMap[c.id] = c; });
+        const mergedCards = Object.values(mergedCardMap);
+
+        // Trip: prefer whichever exists, cloud wins if both exist
+        const mergedTrip = cloudTrip || localTrip;
+
+        // Apply merged state
+        state.trip = mergedTrip;
+        state.expenses = mergedExpenses;
+        state.cards = mergedCards;
+        state.pastTrips = mergedPastTrips;
+
+        if (!state.trip) { state.currentView = "history"; }
+
+        // Save merged result to both
+        persist();
+        render();
+
+        const localCount = localExpenses.length;
+        const cloudCount = cloudExpenses.length;
+        const mergedCount = mergedExpenses.length;
+        if (mergedCount > cloudCount && mergedCount > localCount) {
+          showSyncStatus("Merged local + cloud");
+        } else if (hasCloud) {
           showSyncStatus("Synced from cloud");
         } else {
-          // No cloud data — check if we have local data to upload
-          loadState();
-          if (state.expenses.length > 0 || state.trip) {
-            await saveToFirebase();
-            render();
-            showSyncStatus("Uploaded to cloud");
-          } else {
-            state.trip = null;
-            state.expenses = [];
-            state.cards = DEFAULT_CARDS;
-            state.pastTrips = SEED_PAST_TRIPS;
-            state.currentView = "history";
-            persist();
-            render();
-            showSyncStatus("Welcome!");
-          }
+          showSyncStatus("Uploaded to cloud");
         }
       } catch(e) {
         console.error("Load error:", e);
-        // Fallback to local data
         loadState();
         render();
         showSyncStatus("Offline mode");
