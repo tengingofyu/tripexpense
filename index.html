@@ -1347,8 +1347,9 @@ function initDragAndDrop() {
     state.isDragging = true;
     const sourceContainer = item.closest(".swipe-container");
     if (sourceContainer) sourceContainer.classList.add("drag-source");
+    const rect = item.getBoundingClientRect();
     dragClone = item.cloneNode(true);
-    dragClone.style.cssText = "position:fixed;left:8px;right:8px;width:" + item.offsetWidth + "px;z-index:1000;opacity:0.9;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
+    dragClone.style.cssText = "position:fixed;left:" + rect.left + "px;width:" + rect.width + "px;z-index:1000;opacity:0.9;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
     dragClone.style.top = (clientY - 30) + "px";
     document.body.appendChild(dragClone);
     if (navigator.vibrate) navigator.vibrate(30);
