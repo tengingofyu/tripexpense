@@ -53,7 +53,7 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 input[type="number"] { -moz-appearance: textfield; }
 
 /* Header */
-.header { padding: 20px 16px 12px; padding-top: calc(env(safe-area-inset-top, 44px) + 12px); border-bottom: 1px solid var(--border); }
+.header { padding: 8px 16px 12px; border-bottom: 1px solid var(--border); }
 .header-top { display: flex; align-items: center; justify-content: space-between; }
 .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent); }
 .trip-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; background: var(--accent-dim); color: var(--accent); }
@@ -232,10 +232,10 @@ input[type="number"] { -moz-appearance: textfield; }
 .user-info.online { color: var(--success); }
 .user-info.offline { color: var(--danger); }
 .signout-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; }
-.sync-btn { background: none; border: 1px solid var(--border); color: var(--accent); font-size: 16px; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sync-btn { background: none; border: 1px solid var(--border); color: var(--accent); font-size: 14px; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; flex-shrink: 0; line-height: 26px; text-align: center; padding: 0; }
 .sync-btn:active { background: var(--accent-dim); }
 .last-sync { font-size: 9px; color: var(--text-muted); flex: 1; text-align: right; }
-.sync-indicator { font-size: 10px; color: var(--success); padding: 0 16px 4px; }
+
 </style>
 </head>
 <body>
@@ -258,7 +258,7 @@ input[type="number"] { -moz-appearance: textfield; }
     <button class="sync-btn" id="sync-btn" title="Sync now">⟳</button>
     <button class="signout-btn" id="signout-btn">Sign out</button>
   </div>
-  <div class="sync-indicator" id="sync-status"></div>
+  </div>
 
   <!-- Header -->
   <div class="header">
@@ -490,7 +490,6 @@ async function saveToFirebase() {
     });
     state.lastSyncAt = Date.now();
     saveLocal("last-sync-at", state.lastSyncAt);
-    if (state.syncMode === "auto") showSyncStatus("Synced ✓");
   } catch(e) {
     console.error("Firebase save error:", e);
     if (!navigator.onLine) {
@@ -502,8 +501,12 @@ async function saveToFirebase() {
 }
 
 function showSyncStatus(msg) {
-  const el = document.getElementById("sync-status");
-  if (el) { el.textContent = msg; setTimeout(() => { el.textContent = ""; }, 2000); }
+  const el = document.getElementById("last-sync");
+  if (el) {
+    el.textContent = msg;
+    // Revert to time-based text after 3 seconds
+    setTimeout(() => { if (typeof updateUserBar === 'function') updateUserBar(); }, 3000);
+  }
 }
 
 function loadState() {
