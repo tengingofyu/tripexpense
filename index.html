@@ -1623,32 +1623,32 @@ function initAuth() {
     if (user) {
       currentUser = user;
       state.isOffline = false;
-      // Hide sign-in, show app
       document.getElementById("auth-screen").classList.add("hidden");
       document.getElementById("app").classList.remove("hidden");
       updateUserBar();
 
-      // Auto-sync on load if auto mode
+      // Silent auto-sync — preserve scroll position, no re-render unless data changed
       if (state.syncMode === "auto") {
         try {
+          const prevCount = state.expenses.length;
+          const scrollY = window.scrollY;
           await manualSync();
+          // Restore scroll if data count didn't change (just synced same data)
+          if (state.expenses.length === prevCount) window.scrollTo(0, scrollY);
         } catch(e) {
           console.error("Auto-sync on load failed:", e);
         }
       }
-      render();
+      // No render() here — manualSync already renders if needed, otherwise local data is already displayed
     } else {
-      // Not signed in — check if we have local data
       currentUser = null;
       if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
-        // Has local data — show app in offline mode
         document.getElementById("auth-screen").classList.add("hidden");
         document.getElementById("app").classList.remove("hidden");
         state.isOffline = true;
         updateUserBar();
-        render();
+        // Don't re-render — already rendered from initial load
       } else {
-        // No data at all — show sign-in screen
         document.getElementById("auth-screen").classList.remove("hidden");
         document.getElementById("app").classList.add("hidden");
       }
