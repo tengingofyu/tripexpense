@@ -105,7 +105,7 @@ input[type="number"] { -moz-appearance: textfield; }
 
 /* Swipe to delete */
 .swipe-container { position: relative; overflow: hidden; }
-.swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; }
+.swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; pointer-events: none; }
 .swipe-container .expense-item { position: relative; z-index: 1; background: var(--bg); transition: none; }
 .expense-left { flex: 1; min-width: 0; }
 .expense-desc { font-size: 13px; color: var(--text); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -232,6 +232,9 @@ input[type="number"] { -moz-appearance: textfield; }
 .user-info.online { color: var(--success); }
 .user-info.offline { color: var(--danger); }
 .signout-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; }
+.sync-btn { background: none; border: 1px solid var(--border); color: var(--accent); font-size: 16px; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sync-btn:active { background: var(--accent-dim); }
+.last-sync { font-size: 9px; color: var(--text-muted); flex: 1; text-align: right; }
 .sync-indicator { font-size: 10px; color: var(--success); padding: 0 16px 4px; }
 </style>
 </head>
@@ -249,8 +252,10 @@ input[type="number"] { -moz-appearance: textfield; }
 
 <div id="app" class="hidden">
   <!-- User info -->
-  <div class="user-info">
+  <div class="user-info" id="user-info-bar">
     <span id="user-email"></span>
+    <span class="last-sync" id="last-sync"></span>
+    <button class="sync-btn" id="sync-btn" title="Sync now">⟳</button>
     <button class="signout-btn" id="signout-btn">Sign out</button>
   </div>
   <div class="sync-indicator" id="sync-status"></div>
@@ -328,6 +333,8 @@ let state = {
   isHistorical: false,
   editingEnabled: false,
   isOffline: false,
+  syncMode: "auto", // "auto" or "manual"
+  lastSyncAt: null,
 };
 const deleteTimers = {};
 
@@ -481,8 +488,17 @@ async function saveToFirebase() {
       pastTrips: state.pastTrips,
       updatedAt: Date.now(),
     });
-    showSyncStatus("Synced");
-  } catch(e) { console.error("Firebase save error:", e); showSyncStatus("Sync failed"); }
+    state.lastSyncAt = Date.now();
+    saveLocal("last-sync-at", state.lastSyncAt);
+    if (state.syncMode === "auto") showSyncStatus("Synced ✓");
+  } catch(e) {
+    console.error("Firebase save error:", e);
+    if (!navigator.onLine) {
+      showSyncStatus("Saved locally (offline)");
+    } else {
+      showSyncStatus("Sync failed");
+    }
+  }
 }
 
 function showSyncStatus(msg) {
@@ -491,22 +507,89 @@ function showSyncStatus(msg) {
 }
 
 function loadState() {
-  // Only load from localStorage as a quick cache — Firebase overwrites this on auth
   state.trip = loadLocal("trip", null);
   state.expenses = loadLocal("expenses", []);
   state.cards = loadLocal("cards", DEFAULT_CARDS);
   state.pastTrips = loadLocal("past-trips", []);
+  state.syncMode = loadLocal("sync-mode", "auto");
+  state.lastSyncAt = loadLocal("last-sync-at", null);
 }
 
 function persist() {
-  // Save to localStorage immediately
   saveLocal("trip", state.trip);
   saveLocal("expenses", state.expenses);
   saveLocal("cards", state.cards);
   saveLocal("past-trips", state.pastTrips);
-  // Debounce Firebase save
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveToFirebase(), 1000);
+  // Auto-sync to Firebase if enabled and signed in
+  if (state.syncMode === "auto" && currentUser) {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveToFirebase(), 1500);
+  }
+}
+
+async function manualSync() {
+  if (!currentUser) {
+    showSyncStatus("Sign in first to sync");
+    return;
+  }
+  showSyncStatus("Syncing...");
+  try {
+    // Load cloud data
+    const { db, doc, getDoc } = window.FB;
+    const snap = await getDoc(doc(db, "users", currentUser.uid));
+    
+    if (snap.exists()) {
+      const cloud = snap.data();
+      // Merge local + cloud
+      const mergedExpenseMap = {};
+      state.expenses.forEach(e => { mergedExpenseMap[e.id] = e; });
+      (cloud.expenses || []).forEach(e => {
+        const existing = mergedExpenseMap[e.id];
+        if (!existing) { mergedExpenseMap[e.id] = e; return; }
+        const existingTime = existing.updatedAt || existing.createdAt || 0;
+        const cloudTime = e.updatedAt || e.createdAt || 0;
+        if (cloudTime >= existingTime) mergedExpenseMap[e.id] = e;
+      });
+      state.expenses = Object.values(mergedExpenseMap);
+
+      const mergedPastMap = {};
+      state.pastTrips.forEach(pt => { mergedPastMap[pt.id] = pt; });
+      (cloud.pastTrips || []).forEach(pt => {
+        const existing = mergedPastMap[pt.id];
+        if (!existing) { mergedPastMap[pt.id] = pt; return; }
+        const existingTime = existing.endedAt || existing.createdAt || 0;
+        const cloudTime = pt.endedAt || pt.createdAt || 0;
+        if (cloudTime >= existingTime) mergedPastMap[pt.id] = pt;
+      });
+      state.pastTrips = Object.values(mergedPastMap);
+
+      const mergedCardMap = {};
+      state.cards.forEach(c => { mergedCardMap[c.id] = c; });
+      (cloud.cards || []).forEach(c => { mergedCardMap[c.id] = c; });
+      state.cards = Object.values(mergedCardMap);
+
+      if (!state.trip && cloud.trip) state.trip = cloud.trip;
+    }
+
+    // Push merged data to cloud
+    await saveToFirebase();
+    state.lastSyncAt = Date.now();
+    saveLocal("last-sync-at", state.lastSyncAt);
+    // Save merged data locally
+    saveLocal("trip", state.trip);
+    saveLocal("expenses", state.expenses);
+    saveLocal("cards", state.cards);
+    saveLocal("past-trips", state.pastTrips);
+    render();
+    showSyncStatus("Synced ✓");
+  } catch(e) {
+    console.error("Sync error:", e);
+    if (!navigator.onLine) {
+      showSyncStatus("No network — try again later");
+    } else {
+      showSyncStatus("Sync failed — try again");
+    }
+  }
 }
 
 // ─── Helpers ───────────────────────────────────────────
@@ -587,6 +670,7 @@ function esc(s) { const d=document.createElement("div"); d.textContent=s; return
 // ─── Render ────────────────────────────────────────────
 function render() {
   const t = state.trip;
+  if (typeof updateUserBar === 'function') updateUserBar();
   // Header
   document.getElementById("trip-badge").textContent = t ? (t.type==="work" ? "Work" : "Personal") : "";
   document.getElementById("trip-name").textContent = t ? t.name + " · " + t.currency : "No active trip";
@@ -1103,6 +1187,15 @@ function renderCards() {
   h += '<button class="save-cards-btn" id="save-cards">Save Cards</button>';
   h += '</div>';
 
+  // Sync settings
+  h += '<div class="backup-section"><h3 class="section-title">Sync Settings</h3>';
+  h += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+  h += `<button class="type-btn ${state.syncMode==='auto'?'active':''}" id="sync-auto">Auto Sync</button>`;
+  h += `<button class="type-btn ${state.syncMode==='manual'?'active':''}" id="sync-manual">Manual Sync</button>`;
+  h += '</div>';
+  h += `<div style="font-size:11px;color:var(--text-muted);">${state.syncMode==='auto'?'Syncs automatically after every edit when signed in.':'Only syncs when you tap the ⟳ button. Good for limited data.'}</div>`;
+  h += '</div>';
+
   // Backup
   h += '<div class="backup-section"><h3 class="section-title">Backup & Restore</h3>';
   h += '<div class="backup-buttons">';
@@ -1148,6 +1241,13 @@ function renderCards() {
       persist(); render();
       if(st) { st.textContent="Restored!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
     } catch { if(st) { st.textContent="Invalid backup data"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); } }
+  });
+  // Sync mode toggles
+  document.getElementById("sync-auto")?.addEventListener("click", () => {
+    state.syncMode = "auto"; saveLocal("sync-mode", "auto"); render();
+  });
+  document.getElementById("sync-manual")?.addEventListener("click", () => {
+    state.syncMode = "manual"; saveLocal("sync-mode", "manual"); render();
   });
 }
 
@@ -1438,7 +1538,10 @@ function initSwipeToDelete() {
 }
 
 // ─── Init ──────────────────────────────────────────────
-// Auth flow
+// Sync button handler
+document.getElementById("sync-btn")?.addEventListener("click", () => manualSync());
+
+// Sign-in button
 document.getElementById("google-signin")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("auth-status");
   try {
@@ -1454,24 +1557,60 @@ document.getElementById("google-signin")?.addEventListener("click", async () => 
 document.getElementById("signout-btn")?.addEventListener("click", async () => {
   const { auth, signOut } = window.FB;
   await signOut(auth);
-  document.getElementById("app").classList.add("hidden");
-  document.getElementById("auth-screen").classList.remove("hidden");
+  currentUser = null;
+  state.isOffline = true;
+  updateUserBar();
 });
 
 document.getElementById("offline-btn")?.addEventListener("click", () => {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
-  document.getElementById("user-email").textContent = "Offline";
-  document.getElementById("signout-btn").style.display = "none";
-  document.querySelector(".user-info").classList.add("offline");
-  document.querySelector(".user-info").classList.remove("online");
   state.isOffline = true;
+  updateUserBar();
   loadState();
   if (!state.trip) { state.currentView = "history"; }
   render();
 });
 
-// Wait for Firebase to load, then listen for auth
+function updateUserBar() {
+  const bar = document.getElementById("user-info-bar");
+  const email = document.getElementById("user-email");
+  const syncBtn = document.getElementById("sync-btn");
+  const signout = document.getElementById("signout-btn");
+  const lastSync = document.getElementById("last-sync");
+  if (currentUser) {
+    bar.classList.add("online");
+    bar.classList.remove("offline");
+    email.textContent = currentUser.email;
+    syncBtn.style.display = "";
+    signout.style.display = "";
+    if (state.lastSyncAt) {
+      const ago = Math.round((Date.now() - state.lastSyncAt) / 60000);
+      lastSync.textContent = ago < 1 ? "Just synced" : ago < 60 ? ago + "m ago" : Math.round(ago/60) + "h ago";
+    } else {
+      lastSync.textContent = "Not synced";
+    }
+  } else {
+    bar.classList.remove("online");
+    bar.classList.add("offline");
+    email.textContent = "Offline";
+    syncBtn.style.display = "none";
+    signout.style.display = "none";
+    lastSync.textContent = "";
+  }
+}
+
+function formatSyncTime() {
+  if (!state.lastSyncAt) return "Not synced";
+  const ago = Math.round((Date.now() - state.lastSyncAt) / 60000);
+  return ago < 1 ? "Just synced" : ago < 60 ? ago + "m ago" : Math.round(ago/60) + "h ago";
+}
+
+// Step 1: Load from localStorage immediately and render
+loadState();
+if (!state.trip) { state.currentView = "history"; }
+
+// Step 2: Check if we should show sign-in or app
 function initAuth() {
   if (!window.FB) { setTimeout(initAuth, 100); return; }
   const { auth, onAuthStateChanged } = window.FB;
@@ -1480,95 +1619,47 @@ function initAuth() {
     if (user) {
       currentUser = user;
       state.isOffline = false;
+      // Hide sign-in, show app
       document.getElementById("auth-screen").classList.add("hidden");
       document.getElementById("app").classList.remove("hidden");
-      document.getElementById("user-email").textContent = user.email;
-      document.getElementById("signout-btn").style.display = "";
-      document.querySelector(".user-info").classList.add("online");
-      document.querySelector(".user-info").classList.remove("offline");
+      updateUserBar();
 
-      try {
-        // Load both local and cloud data
-        const localTrip = loadLocal("trip", null);
-        const localExpenses = loadLocal("expenses", []);
-        const localCards = loadLocal("cards", DEFAULT_CARDS);
-        const localPastTrips = loadLocal("past-trips", []);
-
-        const hasCloud = await loadFromFirebase();
-        const cloudTrip = hasCloud ? state.trip : null;
-        const cloudExpenses = hasCloud ? state.expenses : [];
-        const cloudCards = hasCloud ? state.cards : DEFAULT_CARDS;
-        const cloudPastTrips = hasCloud ? state.pastTrips : [];
-
-        // Merge: union of expenses by ID, prefer more recently updated version
-        const mergedExpenseMap = {};
-        localExpenses.forEach(e => { mergedExpenseMap[e.id] = e; });
-        cloudExpenses.forEach(e => {
-          const existing = mergedExpenseMap[e.id];
-          if (!existing) { mergedExpenseMap[e.id] = e; return; }
-          // Compare updatedAt (fallback to createdAt) — keep the newer one
-          const existingTime = existing.updatedAt || existing.createdAt || 0;
-          const cloudTime = e.updatedAt || e.createdAt || 0;
-          if (cloudTime >= existingTime) mergedExpenseMap[e.id] = e;
-        });
-        const mergedExpenses = Object.values(mergedExpenseMap);
-
-        // Merge past trips by ID, prefer more recently ended version
-        const mergedPastMap = {};
-        localPastTrips.forEach(pt => { mergedPastMap[pt.id] = pt; });
-        cloudPastTrips.forEach(pt => {
-          const existing = mergedPastMap[pt.id];
-          if (!existing) { mergedPastMap[pt.id] = pt; return; }
-          const existingTime = existing.endedAt || existing.createdAt || 0;
-          const cloudTime = pt.endedAt || pt.createdAt || 0;
-          if (cloudTime >= existingTime) mergedPastMap[pt.id] = pt;
-        });
-        const mergedPastTrips = Object.values(mergedPastMap);
-
-        // Merge cards by ID
-        const mergedCardMap = {};
-        localCards.forEach(c => { mergedCardMap[c.id] = c; });
-        cloudCards.forEach(c => { mergedCardMap[c.id] = c; });
-        const mergedCards = Object.values(mergedCardMap);
-
-        // Trip: prefer whichever exists, cloud wins if both exist
-        const mergedTrip = cloudTrip || localTrip;
-
-        // Apply merged state
-        state.trip = mergedTrip;
-        state.expenses = mergedExpenses;
-        state.cards = mergedCards;
-        state.pastTrips = mergedPastTrips;
-
-        if (!state.trip) { state.currentView = "history"; }
-
-        // Save merged result to both
-        persist();
-        render();
-
-        const localCount = localExpenses.length;
-        const cloudCount = cloudExpenses.length;
-        const mergedCount = mergedExpenses.length;
-        if (mergedCount > cloudCount && mergedCount > localCount) {
-          showSyncStatus("Merged local + cloud");
-        } else if (hasCloud) {
-          showSyncStatus("Synced from cloud");
-        } else {
-          showSyncStatus("Uploaded to cloud");
+      // Auto-sync on load if auto mode
+      if (state.syncMode === "auto") {
+        try {
+          await manualSync();
+        } catch(e) {
+          console.error("Auto-sync on load failed:", e);
         }
-      } catch(e) {
-        console.error("Load error:", e);
-        loadState();
-        render();
-        showSyncStatus("Offline mode");
       }
+      render();
     } else {
+      // Not signed in — check if we have local data
       currentUser = null;
-      document.getElementById("auth-screen").classList.remove("hidden");
-      document.getElementById("app").classList.add("hidden");
+      if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
+        // Has local data — show app in offline mode
+        document.getElementById("auth-screen").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+        state.isOffline = true;
+        updateUserBar();
+        render();
+      } else {
+        // No data at all — show sign-in screen
+        document.getElementById("auth-screen").classList.remove("hidden");
+        document.getElementById("app").classList.add("hidden");
+      }
     }
   });
 }
+
+// Show app immediately with local data
+document.getElementById("auth-screen").classList.add("hidden");
+document.getElementById("app").classList.remove("hidden");
+state.isOffline = true;
+updateUserBar();
+render();
+
+// Then check auth in background
 initAuth();
 </script>
 </body>
