@@ -65,7 +65,7 @@ input[type="number"] { -moz-appearance: textfield; }
 .nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Quick Entry */
-.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; background: var(--bg); }
+.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: var(--bg); }
 .input-row { display: flex; gap: 8px; }
 .main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
 .main-input:disabled { opacity: 0.5; }
@@ -850,7 +850,7 @@ function renderEditForm(e) {
   html += `<input class="edit-input" id="edit-sgd" type="number" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
   html += '<select class="edit-select" id="edit-card">';
   html += '<option value="">No card</option>';
-  state.cards.forEach(c => { html += `<option value="${c.id}" ${e.card===c.id?'selected':''}>${esc(c.name)}</option>`; });
+  [...state.cards].sort((a,b) => a.name.localeCompare(b.name)).forEach(c => { html += `<option value="${c.id}" ${e.card===c.id?'selected':''}>${esc(c.name)}</option>`; });
   html += '</select>';
   html += '<select class="edit-select" id="edit-category">';
   CATEGORIES.forEach(c => { html += `<option value="${c.name}" ${e.category===c.name?'selected':''}>${c.name}</option>`; });
@@ -1149,7 +1149,7 @@ function renderDashboard() {
   }
 
   // Daily breakdown by card
-  const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => a.localeCompare(b));
+  const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
   if (dates.length) {
     h += '<div class="breakdown"><div class="breakdown-title">By Day</div>';
     dates.forEach(date => {
@@ -1179,7 +1179,7 @@ function renderDashboard() {
 // ─── Cards ─────────────────────────────────────────────
 function renderCards() {
   let h = '<div class="card-manager"><h3 class="section-title">Payment Methods</h3>';
-  state.cards.forEach(c => {
+  [...state.cards].sort((a,b) => a.name.localeCompare(b.name)).forEach(c => {
     h += `<div class="card-row"><span class="name">${esc(c.name)}</span><span class="shortcut">${esc(c.shortcut)}</span><button class="remove" data-remove-card="${c.id}">×</button></div>`;
   });
   h += '<div class="add-card-row">';
