@@ -97,17 +97,14 @@ input[type="number"] { -moz-appearance: textfield; }
 .expense-item:active { background: var(--surface); }
 .drag-handle { color: var(--text-muted); font-size: 18px; cursor: grab; padding: 4px 0 4px 4px; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0; line-height: 1; }
 .drag-handle:active { cursor: grabbing; }
-.expense-item.dragging { opacity: 0.4; background: var(--surface); }
-.expense-item.drag-over-top { border-top: 2px solid var(--accent); margin-top: -2px; background: rgba(59,130,246,0.15); }
-.expense-item.drag-over-bottom { border-bottom: 2px solid var(--accent); margin-bottom: -2px; background: rgba(59,130,246,0.15); }
-.day-header.drag-over { border-bottom: 2px solid var(--accent); background: rgba(59,130,246,0.1); }
+.expense-item.dragging { opacity: 0.3; }
+.swipe-container.drag-source { opacity: 0.3; }
+.swipe-container.drag-insert-above { box-shadow: 0 -3px 0 0 var(--accent); }
+.swipe-container.drag-insert-below { box-shadow: 0 3px 0 0 var(--accent); }
+.day-header.drag-over { box-shadow: 0 3px 0 0 var(--accent); }
 
-/* Swipe to delete + drag */
+/* Swipe to delete */
 .swipe-container { position: relative; overflow: hidden; }
-.swipe-container.drag-collapsed { height: 0; opacity: 0; margin: 0; padding: 0; overflow: hidden; pointer-events: none; }
-.swipe-container.drag-gap-above { margin-top: 52px; }
-.swipe-container.drag-gap-below { margin-bottom: 52px; }
-.day-header.drag-gap-below { margin-bottom: 52px; }
 .swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; }
 .swipe-container .expense-item { position: relative; z-index: 1; background: var(--bg); transition: none; }
 .expense-left { flex: 1; min-width: 0; }
@@ -1245,10 +1242,8 @@ function initDragAndDrop() {
   function startDrag(id, item, clientY) {
     dragStarted = true;
     state.isDragging = true;
-    // Collapse the source item's container
     const sourceContainer = item.closest(".swipe-container");
-    if (sourceContainer) sourceContainer.classList.add("drag-collapsed");
-    // Create floating clone
+    if (sourceContainer) sourceContainer.classList.add("drag-source");
     dragClone = item.cloneNode(true);
     dragClone.style.cssText = "position:fixed;left:8px;right:8px;width:" + item.offsetWidth + "px;z-index:1000;opacity:0.9;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
     dragClone.style.top = (clientY - 30) + "px";
@@ -1259,11 +1254,11 @@ function initDragAndDrop() {
   function moveDrag(clientX, clientY) {
     if (!dragStarted || !dragClone) return;
     dragClone.style.top = (clientY - 30) + "px";
-    // Clear previous gap indicators
-    document.querySelectorAll(".drag-over-top,.drag-over-bottom,.drag-over,.drag-gap-above,.drag-gap-below").forEach(el => {
-      el.classList.remove("drag-over-top","drag-over-bottom","drag-over","drag-gap-above","drag-gap-below");
+    // Clear previous indicators
+    document.querySelectorAll(".drag-insert-above,.drag-insert-below,.drag-over").forEach(el => {
+      el.classList.remove("drag-insert-above","drag-insert-below","drag-over");
     });
-    // Hide clone briefly to find element below
+    // Find element below
     dragClone.style.display = "none";
     const elBelow = document.elementFromPoint(clientX, clientY);
     dragClone.style.display = "";
@@ -1273,15 +1268,12 @@ function initDragAndDrop() {
     if (targetItem && targetItem.dataset.id !== dragId) {
       const rect = targetItem.getBoundingClientRect();
       const isBottomHalf = clientY > rect.top + rect.height / 2;
-      targetItem.classList.add(isBottomHalf ? "drag-over-bottom" : "drag-over-top");
-      // Add gap on the swipe-container
       const container = targetItem.closest(".swipe-container");
-      if (container) container.classList.add(isBottomHalf ? "drag-gap-below" : "drag-gap-above");
+      if (container) container.classList.add(isBottomHalf ? "drag-insert-below" : "drag-insert-above");
     } else if (targetDay) {
       targetDay.classList.add("drag-over");
-      targetDay.classList.add("drag-gap-below");
     }
-    // Auto-scroll when near edges
+    // Auto-scroll
     const edgeZone = 60;
     const vh = window.innerHeight;
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
@@ -1296,13 +1288,16 @@ function initDragAndDrop() {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
     if (!dragStarted) { dragId = null; dragEl = null; return; }
-    const overItemTop = document.querySelector(".expense-item.drag-over-top");
-    const overItemBottom = document.querySelector(".expense-item.drag-over-bottom");
+    const overAbove = document.querySelector(".swipe-container.drag-insert-above");
+    const overBelow = document.querySelector(".swipe-container.drag-insert-below");
     const overDay = document.querySelector(".day-header.drag-over");
-    if ((overItemTop || overItemBottom) && dragId) {
-      const overItem = overItemTop || overItemBottom;
-      const insertAfter = !!overItemBottom;
-      reorderExpense(dragId, overItem.dataset.id, overItem.dataset.date, insertAfter);
+    if ((overAbove || overBelow) && dragId) {
+      const container = overAbove || overBelow;
+      const targetItem = container.querySelector(".expense-item[data-id]");
+      if (targetItem) {
+        const insertAfter = !!overBelow;
+        reorderExpense(dragId, targetItem.dataset.id, targetItem.dataset.date, insertAfter);
+      }
     } else if (overDay && dragId) {
       moveExpenseToDate(dragId, overDay.dataset.dayheader);
     }
@@ -1311,8 +1306,8 @@ function initDragAndDrop() {
 
   function cleanup() {
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
-    document.querySelectorAll(".dragging,.drag-over,.drag-over-top,.drag-over-bottom,.drag-collapsed,.drag-gap-above,.drag-gap-below").forEach(el => {
-      el.classList.remove("dragging","drag-over","drag-over-top","drag-over-bottom","drag-collapsed","drag-gap-above","drag-gap-below");
+    document.querySelectorAll(".dragging,.drag-over,.drag-source,.drag-insert-above,.drag-insert-below").forEach(el => {
+      el.classList.remove("dragging","drag-over","drag-source","drag-insert-above","drag-insert-below");
     });
     if (dragClone) { dragClone.remove(); dragClone = null; }
     dragId = null; dragEl = null; dragStarted = false;
