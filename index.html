@@ -99,9 +99,9 @@ input[type="number"] { -moz-appearance: textfield; }
 .drag-handle:active { cursor: grabbing; }
 .expense-item.dragging { opacity: 0.3; }
 .swipe-container.drag-source { opacity: 0.3; }
-.swipe-container.drag-insert-above { box-shadow: 0 -3px 0 0 var(--accent); }
-.swipe-container.drag-insert-below { box-shadow: 0 3px 0 0 var(--accent); }
-.day-header.drag-over { box-shadow: 0 3px 0 0 var(--accent); }
+.expense-item.drag-target-above { border-top: 3px solid var(--accent); }
+.expense-item.drag-target-below { border-bottom: 3px solid var(--accent); }
+.day-header.drag-over { border-bottom: 3px solid var(--accent); }
 
 /* Swipe to delete */
 .swipe-container { position: relative; overflow: hidden; }
@@ -1255,8 +1255,8 @@ function initDragAndDrop() {
     if (!dragStarted || !dragClone) return;
     dragClone.style.top = (clientY - 30) + "px";
     // Clear previous indicators
-    document.querySelectorAll(".drag-insert-above,.drag-insert-below,.drag-over").forEach(el => {
-      el.classList.remove("drag-insert-above","drag-insert-below","drag-over");
+    document.querySelectorAll(".drag-target-above,.drag-target-below,.drag-over").forEach(el => {
+      el.classList.remove("drag-target-above","drag-target-below","drag-over");
     });
     // Find element below
     dragClone.style.display = "none";
@@ -1268,8 +1268,7 @@ function initDragAndDrop() {
     if (targetItem && targetItem.dataset.id !== dragId) {
       const rect = targetItem.getBoundingClientRect();
       const isBottomHalf = clientY > rect.top + rect.height / 2;
-      const container = targetItem.closest(".swipe-container");
-      if (container) container.classList.add(isBottomHalf ? "drag-insert-below" : "drag-insert-above");
+      targetItem.classList.add(isBottomHalf ? "drag-target-below" : "drag-target-above");
     } else if (targetDay) {
       targetDay.classList.add("drag-over");
     }
@@ -1288,16 +1287,13 @@ function initDragAndDrop() {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
     if (!dragStarted) { dragId = null; dragEl = null; return; }
-    const overAbove = document.querySelector(".swipe-container.drag-insert-above");
-    const overBelow = document.querySelector(".swipe-container.drag-insert-below");
+    const targetAbove = document.querySelector(".expense-item.drag-target-above");
+    const targetBelow = document.querySelector(".expense-item.drag-target-below");
     const overDay = document.querySelector(".day-header.drag-over");
-    if ((overAbove || overBelow) && dragId) {
-      const container = overAbove || overBelow;
-      const targetItem = container.querySelector(".expense-item[data-id]");
-      if (targetItem) {
-        const insertAfter = !!overBelow;
-        reorderExpense(dragId, targetItem.dataset.id, targetItem.dataset.date, insertAfter);
-      }
+    if ((targetAbove || targetBelow) && dragId) {
+      const target = targetAbove || targetBelow;
+      const insertAfter = !!targetBelow;
+      reorderExpense(dragId, target.dataset.id, target.dataset.date, insertAfter);
     } else if (overDay && dragId) {
       moveExpenseToDate(dragId, overDay.dataset.dayheader);
     }
@@ -1306,8 +1302,8 @@ function initDragAndDrop() {
 
   function cleanup() {
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
-    document.querySelectorAll(".dragging,.drag-over,.drag-source,.drag-insert-above,.drag-insert-below").forEach(el => {
-      el.classList.remove("dragging","drag-over","drag-source","drag-insert-above","drag-insert-below");
+    document.querySelectorAll(".drag-over,.drag-source,.drag-target-above,.drag-target-below").forEach(el => {
+      el.classList.remove("drag-over","drag-source","drag-target-above","drag-target-below");
     });
     if (dragClone) { dragClone.remove(); dragClone = null; }
     dragId = null; dragEl = null; dragStarted = false;
