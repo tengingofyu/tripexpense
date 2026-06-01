@@ -11,7 +11,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
-import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCHoMZNv-o4VssCeSjAFKDb2iRpb1QXwQ0",
@@ -27,7 +27,7 @@ const db = getFirestore(fbApp);
 const auth = getAuth(fbApp);
 
 // Expose to global scope for the non-module script
-window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut };
+window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
 <style>
 :root {
@@ -77,6 +77,7 @@ input[type="number"] { -moz-appearance: textfield; }
 .preview-card { font-size: 10px; padding: 2px 6px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
 .preview-cat { font-size: 10px; padding: 2px 6px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
 .preview-desc { font-size: 12px; color: var(--text-dim); }
+.preview-submit { background: var(--accent); border: none; color: #fff; font-size: 16px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: auto; }
 
 /* Claim prompt */
 .claim-prompt { margin-top: 10px; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
@@ -97,7 +98,8 @@ input[type="number"] { -moz-appearance: textfield; }
 .drag-handle { color: var(--text-muted); font-size: 18px; cursor: grab; padding: 4px 0 4px 4px; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0; line-height: 1; }
 .drag-handle:active { cursor: grabbing; }
 .expense-item.dragging { opacity: 0.4; background: var(--surface); }
-.expense-item.drag-over { border-top: 2px solid var(--accent); margin-top: -2px; background: rgba(59,130,246,0.15); }
+.expense-item.drag-over-top { border-top: 2px solid var(--accent); margin-top: -2px; background: rgba(59,130,246,0.15); }
+.expense-item.drag-over-bottom { border-bottom: 2px solid var(--accent); margin-bottom: -2px; background: rgba(59,130,246,0.15); }
 .day-header.drag-over { border-bottom: 2px solid var(--accent); background: rgba(59,130,246,0.1); }
 
 /* Swipe to delete */
@@ -896,7 +898,10 @@ function updatePreview(val) {
   if (p.card) h += `<span class="preview-card">${esc(p.card.name)}</span>`;
   h += `<span class="preview-cat">${p.category}</span>`;
   if (p.description) h += `<span class="preview-desc">${esc(p.description)}</span>`;
+  h += `<button class="preview-submit" id="preview-submit">✓</button>`;
   prev.innerHTML = h;
+  // Bind submit
+  bindPreviewSubmit();
   // Bind swap
   const swapBtn = document.getElementById("swap-amounts");
   if (swapBtn) swapBtn.addEventListener("click", () => {
@@ -915,9 +920,19 @@ function updatePreview(val) {
       if (lp.card) h2 += `<span class="preview-card">${esc(lp.card.name)}</span>`;
       h2 += `<span class="preview-cat">${lp.category}</span>`;
       if (lp.description) h2 += `<span class="preview-desc">${esc(lp.description)}</span>`;
+      h2 += `<button class="preview-submit" id="preview-submit">✓</button>`;
       prev.innerHTML = h2;
+      bindPreviewSubmit();
       document.getElementById("swap-amounts")?.addEventListener("click", arguments.callee);
     }
+  });
+}
+
+function bindPreviewSubmit() {
+  const btn = document.getElementById("preview-submit");
+  if (btn) btn.addEventListener("click", () => {
+    const input = document.getElementById("expense-input");
+    if (input) submitExpense(input.value);
   });
 }
 
@@ -926,13 +941,13 @@ function submitExpense(val) {
   const p = state.lastPreview || parseInput(val, state.cards, state.trip);
   if (!p || (!p.amount && !p.isSgdOnly)) return;
   const expDate = p.parsedDate || todayStr();
-  const dateExps = state.expenses.filter(e => e.date === expDate);
-  const maxOrder = dateExps.length ? Math.max(...dateExps.map(e => e.sortOrder || 0)) + 1 : 0;
+  // Shift existing entries for this date down to make room at top
+  state.expenses.filter(e => e.date === expDate).forEach(e => { e.sortOrder = (e.sortOrder || 0) + 1; });
   const expense = {
     id: genId(), date: expDate, amount: p.isSgdOnly ? 0 : p.amount, sgdAmount: p.sgdAmount,
     currency: state.trip.currency, description: p.description,
     card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
-    category: p.category, claimable: false, createdAt: Date.now(), sortOrder: maxOrder,
+    category: p.category, claimable: false, createdAt: Date.now(), sortOrder: 0,
     isSgdOnly: p.isSgdOnly || false,
   };
   state.lastPreview = null;
@@ -1233,7 +1248,7 @@ function initDragAndDrop() {
   function moveDrag(clientX, clientY) {
     if (!dragStarted || !dragClone) return;
     dragClone.style.top = (clientY - 30) + "px";
-    document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+    document.querySelectorAll(".drag-over-top,.drag-over-bottom,.drag-over").forEach(el => { el.classList.remove("drag-over-top"); el.classList.remove("drag-over-bottom"); el.classList.remove("drag-over"); });
     // Hide clone briefly to find element below
     dragClone.style.display = "none";
     const elBelow = document.elementFromPoint(clientX, clientY);
@@ -1242,7 +1257,10 @@ function initDragAndDrop() {
     const targetItem = elBelow.closest(".expense-item[data-id]");
     const targetDay = elBelow.closest(".day-header[data-dayheader]");
     if (targetItem && targetItem.dataset.id !== dragId) {
-      targetItem.classList.add("drag-over");
+      // Detect top or bottom half
+      const rect = targetItem.getBoundingClientRect();
+      const isBottomHalf = clientY > rect.top + rect.height / 2;
+      targetItem.classList.add(isBottomHalf ? "drag-over-bottom" : "drag-over-top");
     } else if (targetDay) {
       targetDay.classList.add("drag-over");
     }
@@ -1261,10 +1279,13 @@ function initDragAndDrop() {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
     if (!dragStarted) { dragId = null; dragEl = null; return; }
-    const overItem = document.querySelector(".expense-item.drag-over");
+    const overItemTop = document.querySelector(".expense-item.drag-over-top");
+    const overItemBottom = document.querySelector(".expense-item.drag-over-bottom");
     const overDay = document.querySelector(".day-header.drag-over");
-    if (overItem && dragId) {
-      reorderExpense(dragId, overItem.dataset.id, overItem.dataset.date);
+    if ((overItemTop || overItemBottom) && dragId) {
+      const overItem = overItemTop || overItemBottom;
+      const insertAfter = !!overItemBottom;
+      reorderExpense(dragId, overItem.dataset.id, overItem.dataset.date, insertAfter);
     } else if (overDay && dragId) {
       moveExpenseToDate(dragId, overDay.dataset.dayheader);
     }
@@ -1273,7 +1294,7 @@ function initDragAndDrop() {
 
   function cleanup() {
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
-    document.querySelectorAll(".dragging,.drag-over").forEach(el => { el.classList.remove("dragging"); el.classList.remove("drag-over"); });
+    document.querySelectorAll(".dragging,.drag-over,.drag-over-top,.drag-over-bottom").forEach(el => { el.classList.remove("dragging"); el.classList.remove("drag-over"); el.classList.remove("drag-over-top"); el.classList.remove("drag-over-bottom"); });
     if (dragClone) { dragClone.remove(); dragClone = null; }
     dragId = null; dragEl = null; dragStarted = false;
     setTimeout(() => { state.isDragging = false; }, 100);
@@ -1318,8 +1339,7 @@ function initDragAndDrop() {
   document.addEventListener("mouseup", endDrag);
 }
 
-function reorderExpense(draggedId, targetId, targetDate) {
-  // Get the visible sorted order for the target date
+function reorderExpense(draggedId, targetId, targetDate, insertAfter) {
   const dateExps = state.expenses.filter(e => e.date === targetDate).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
   const draggedExp = state.expenses.find(e => e.id === draggedId);
   if (!draggedExp) return;
@@ -1328,8 +1348,12 @@ function reorderExpense(draggedId, targetId, targetDate) {
   const filtered = dateExps.filter(e => e.id !== draggedId);
   // Find target index
   const targetIdx = filtered.findIndex(e => e.id === targetId);
-  // Insert before target
-  filtered.splice(targetIdx, 0, draggedExp);
+  // Insert before or after target
+  if (insertAfter) {
+    filtered.splice(targetIdx + 1, 0, draggedExp);
+  } else {
+    filtered.splice(targetIdx, 0, draggedExp);
+  }
 
   // Update date and sortOrder
   draggedExp.date = targetDate;
@@ -1409,14 +1433,10 @@ document.getElementById("google-signin")?.addEventListener("click", async () => 
   const statusEl = document.getElementById("auth-status");
   try {
     statusEl.textContent = "Signing in...";
-    const { auth, signInWithPopup, signInWithRedirect, GoogleAuthProvider } = window.FB;
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      await signInWithRedirect(auth, new GoogleAuthProvider());
-    } else {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-    }
+    const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
+    await signInWithPopup(auth, new GoogleAuthProvider());
   } catch(e) {
+    console.error("Sign-in error:", e);
     statusEl.textContent = "Sign-in failed: " + e.message;
   }
 });
@@ -1442,15 +1462,7 @@ document.getElementById("offline-btn")?.addEventListener("click", () => {
 // Wait for Firebase to load, then listen for auth
 function initAuth() {
   if (!window.FB) { setTimeout(initAuth, 100); return; }
-  const { auth, onAuthStateChanged, getRedirectResult } = window.FB;
-
-  // Handle redirect result first (for mobile sign-in)
-  getRedirectResult(auth).then(result => {
-    // Redirect completed — onAuthStateChanged will handle the rest
-  }).catch(e => {
-    console.error("Redirect result error:", e);
-    // Don't block on errors — onAuthStateChanged will still fire if user is cached
-  });
+  const { auth, onAuthStateChanged } = window.FB;
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
