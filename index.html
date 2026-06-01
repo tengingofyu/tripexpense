@@ -102,12 +102,11 @@ input[type="number"] { -moz-appearance: textfield; }
 .expense-item.drag-over-bottom { border-bottom: 2px solid var(--accent); margin-bottom: -2px; background: rgba(59,130,246,0.15); }
 .day-header.drag-over { border-bottom: 2px solid var(--accent); background: rgba(59,130,246,0.1); }
 
-/* iOS-style drag: collapsed source + gap at target */
-.swipe-container { position: relative; overflow: hidden; transition: max-height 0.2s ease, margin 0.2s ease, opacity 0.2s ease; }
-.swipe-container.drag-collapsed { max-height: 0 !important; opacity: 0; margin: 0; padding: 0; overflow: hidden; }
+/* Swipe to delete + drag */
+.swipe-container { position: relative; overflow: hidden; }
+.swipe-container.drag-collapsed { height: 0; opacity: 0; margin: 0; padding: 0; overflow: hidden; pointer-events: none; }
 .swipe-container.drag-gap-above { margin-top: 52px; }
 .swipe-container.drag-gap-below { margin-bottom: 52px; }
-.day-header { transition: margin 0.2s ease; }
 .day-header.drag-gap-below { margin-bottom: 52px; }
 .swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; }
 .swipe-container .expense-item { position: relative; z-index: 1; background: var(--bg); transition: none; }
