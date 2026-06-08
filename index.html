@@ -116,6 +116,7 @@ input[type="number"] { -moz-appearance: textfield; }
 .tag { font-size: 9px; padding: 1px 5px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
 .tag-cat { font-size: 9px; padding: 1px 5px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
 .tag-claim { font-size: 9px; padding: 1px 5px; background: #2e2a1a; border-radius: 3px; color: var(--warn); }
+.tag-shared { font-size: 9px; padding: 1px 5px; background: #1a2a2e; border-radius: 3px; color: #4ecdc4; }
 .expense-right { text-align: right; flex-shrink: 0; }
 .expense-amount { font-size: 13px; font-weight: 600; color: var(--text); display: block; }
 .expense-sgd { font-size: 10px; color: var(--text-muted); display: block; }
@@ -314,6 +315,7 @@ let state = {
   pastTrips: [],
   currentView: "expenses",
   pendingExpense: null,
+  pendingType: null,
   deletedIds: {},
   editingId: null,
   showCsv: false,
@@ -549,6 +551,23 @@ function parseInput(text, cards, trip) {
 }
 function esc(s) { const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
 
+// Shared expense helpers
+function getGroupSize(trip) { return (trip && trip.groupSize) || 1; }
+function isGroupTrip(trip) { return trip && trip.type === "personal" && getGroupSize(trip) > 1; }
+function getMyShare(e, trip) {
+  if (!e.shared) return e.isSgdOnly ? 0 : e.amount;
+  if (e.myShare != null) return e.myShare;
+  const gs = e.splitCount || getGroupSize(trip);
+  return Math.round((e.isSgdOnly ? 0 : e.amount) / gs * 100) / 100;
+}
+function getMySgdShare(e, trip) {
+  if (!e.shared) return e.sgdAmount || 0;
+  const myAmt = getMyShare(e, trip);
+  const fullAmt = e.isSgdOnly ? (e.sgdAmount || 0) : e.amount;
+  if (!fullAmt) return 0;
+  return Math.round(myAmt / fullAmt * (e.sgdAmount || 0) * 100) / 100;
+}
+
 // ─── Render ────────────────────────────────────────────
 function render() {
   const t = state.trip;
@@ -626,15 +645,22 @@ function renderExpenses() {
     html += '<div class="input-row">';
     html += `<input class="main-input" id="expense-input" type="text" placeholder="amount description card" ${state.pendingExpense ? 'disabled' : ''}>`;
     html += '</div>';
-    // Claim prompt
+    // Claim/Shared prompt
     if (state.pendingExpense) {
       const pe = state.pendingExpense;
       html += '<div class="claim-prompt">';
       const peAmtText = pe.isSgdOnly ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
-      html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
-      html += '<div class="claim-buttons">';
-      html += '<button class="claim-yes" id="claim-yes">Yes</button>';
-      html += '<button class="claim-no" id="claim-no">No</button>';
+      if (state.pendingType === "claimable") {
+        html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
+        html += '<div class="claim-buttons">';
+        html += '<button class="claim-yes" id="claim-yes">Yes</button>';
+        html += '<button class="claim-no" id="claim-no">No</button>';
+      } else if (state.pendingType === "shared") {
+        html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Shared?</span>`;
+        html += '<div class="claim-buttons">';
+        html += '<button class="claim-yes" id="shared-yes">Yes</button>';
+        html += '<button class="claim-no" id="shared-no">No</button>';
+      }
       html += '</div></div>';
     }
     // Preview
@@ -675,6 +701,7 @@ function renderExpenses() {
         if (e.cardName) html += `<span class="tag">${esc(e.cardName)}</span>`;
         html += `<span class="tag-cat">${esc(e.category)}</span>`;
         if (e.claimable) html += '<span class="tag-claim">Claim</span>';
+        if (e.shared) html += `<span class="tag-shared">÷${e.splitCount || getGroupSize(state.trip)}</span>`;
         html += '</div></div>';
         html += '<div class="expense-right">';
         if (e.isSgdOnly) {
@@ -736,6 +763,17 @@ function renderEditForm(e) {
   if (state.trip && state.trip.type === "work") {
     html += `<label class="edit-claim-label"><input type="checkbox" id="edit-claimable" ${e.claimable?'checked':''}> Claimable</label>`;
   }
+  if (isGroupTrip(state.trip)) {
+    const gs = e.splitCount || getGroupSize(state.trip);
+    const myShare = getMyShare(e, state.trip);
+    html += `<label class="edit-claim-label"><input type="checkbox" id="edit-shared" ${e.shared?'checked':''}> Shared</label>`;
+    html += `<div id="shared-fields" style="${e.shared?'':'display:none;'}">`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">Split ÷</label><select class="edit-select" id="edit-split-count" style="width:60px;">`;
+    for (let i = 2; i <= 5; i++) html += `<option value="${i}" ${gs===i?'selected':''}>${i}</option>`;
+    html += `</select></div>`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" step="0.01" value="${myShare.toFixed(2)}" style="width:80px;"></div>`;
+    html += `</div>`;
+  }
   html += '</div>';
   html += '<div class="edit-actions">';
   html += `<button class="save-btn" id="save-edit" data-id="${e.id}">Save</button>`;
@@ -784,6 +822,10 @@ function bindExpenseEvents() {
   const cn = document.getElementById("claim-no");
   if (cy) cy.addEventListener("click", () => resolveClaim(true));
   if (cn) cn.addEventListener("click", () => resolveClaim(false));
+  const sy = document.getElementById("shared-yes");
+  const sn = document.getElementById("shared-no");
+  if (sy) sy.addEventListener("click", () => resolveShared(true));
+  if (sn) sn.addEventListener("click", () => resolveShared(false));
   document.querySelectorAll("[data-edit]").forEach(el => {
     el.addEventListener("click", (ev) => {
       if (isReadOnly) return;
@@ -818,6 +860,21 @@ function bindExpenseEvents() {
         claimable: document.getElementById("edit-claimable")?.checked || false,
         updatedAt: Date.now(),
       };
+      // Save shared fields for group trips
+      if (isGroupTrip(state.trip)) {
+        const isShared = document.getElementById("edit-shared")?.checked || false;
+        state.expenses[idx].shared = isShared;
+        if (isShared) {
+          const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
+          const ms = parseFloat(document.getElementById("edit-my-share")?.value);
+          state.expenses[idx].splitCount = sc;
+          const evenShare = Math.round(state.expenses[idx].amount / sc * 100) / 100;
+          state.expenses[idx].myShare = (!isNaN(ms) && Math.abs(ms - evenShare) > 0.01) ? ms : null;
+        } else {
+          state.expenses[idx].splitCount = null;
+          state.expenses[idx].myShare = null;
+        }
+      }
       persist();
     }
     state.editingId = null;
@@ -830,6 +887,22 @@ function bindExpenseEvents() {
   });
   const cancelEdit = document.getElementById("cancel-edit");
   if (cancelEdit) cancelEdit.addEventListener("click", () => { state.editingId = null; render(); });
+  // Shared checkbox toggle
+  const sharedCheck = document.getElementById("edit-shared");
+  if (sharedCheck) {
+    sharedCheck.addEventListener("change", () => {
+      const fields = document.getElementById("shared-fields");
+      if (fields) fields.style.display = sharedCheck.checked ? "" : "none";
+    });
+    // Update my share when split count changes
+    const splitSelect = document.getElementById("edit-split-count");
+    if (splitSelect) splitSelect.addEventListener("change", () => {
+      const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
+      const sc = parseInt(splitSelect.value) || 2;
+      const msField = document.getElementById("edit-my-share");
+      if (msField) msField.value = (amt / sc).toFixed(2);
+    });
+  }
   const toggleCsv = document.getElementById("toggle-csv");
   if (toggleCsv) toggleCsv.addEventListener("click", () => { state.showCsv = !state.showCsv; render(); });
   const copyCsv = document.getElementById("copy-csv");
@@ -922,8 +995,15 @@ function submitExpense(val) {
   };
   state.lastPreview = null;
   state.swapped = false;
+  // Add shared field default
+  expense.shared = false;
   if (state.trip.type === "work") {
     state.pendingExpense = expense;
+    state.pendingType = "claimable";
+    render();
+  } else if (isGroupTrip(state.trip)) {
+    state.pendingExpense = expense;
+    state.pendingType = "shared";
     render();
   } else {
     state.expenses.unshift(expense);
@@ -936,8 +1016,18 @@ function resolveClaim(claimable) {
   state.pendingExpense.claimable = claimable;
   state.expenses.unshift(state.pendingExpense);
   state.pendingExpense = null;
+  state.pendingType = null;
   persist(); render();
-  // Focus input after claim resolved
+  setTimeout(() => { const inp = document.getElementById("expense-input"); if(inp) inp.focus(); }, 50);
+}
+
+function resolveShared(shared) {
+  if (!state.pendingExpense) return;
+  state.pendingExpense.shared = shared;
+  state.expenses.unshift(state.pendingExpense);
+  state.pendingExpense = null;
+  state.pendingType = null;
+  persist(); render();
   setTimeout(() => { const inp = document.getElementById("expense-input"); if(inp) inp.focus(); }, 50);
 }
 
@@ -958,12 +1048,19 @@ function undoDelete(id) {
 
 function generateCsv() {
   const isWork = state.trip && state.trip.type === "work";
+  const isGroup = isGroupTrip(state.trip);
   const h = ["Date","Description","Amount","Currency","SGD Amount","Card","Category"];
   if (isWork) h.push("Claimable");
+  if (isGroup) h.push("Shared","My Share","My Share SGD");
   const rows = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0))
     .map(e => {
       const row = [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', e.isSgdOnly ? "" : e.amount.toFixed(2), e.isSgdOnly ? "SGD" : e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||""];
       if (isWork) row.push(e.claimable?"Yes":"No");
+      if (isGroup) {
+        row.push(e.shared?"Yes":"No");
+        row.push(getMyShare(e, state.trip).toFixed(2));
+        row.push(getMySgdShare(e, state.trip).toFixed(2));
+      }
       return row.join(",");
     });
   return [h.join(","), ...rows].join("\n");
@@ -997,11 +1094,20 @@ function renderDashboard() {
   });
 
   let h = '<div class="dashboard">';
+  const isGroup = isGroupTrip(state.trip);
 
   // Totals - prominent
   h += '<div class="total-banner">';
-  h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
-  h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${fmt(totalSgd)}</span></div>`;
+  if (isGroup) {
+    const myShareF = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+    const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, state.trip), 0);
+    h += `<div class="total-row"><span class="total-label">My Share (${c})</span><span class="total-value">$${fmt(myShareF)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">My Share (SGD)</span><span class="total-value">S$${fmt(mySgdShare)}</span></div>`;
+    h += `<div class="total-row" style="opacity:0.5;font-size:12px;"><span class="total-label">Total Paid (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
+  } else {
+    h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${fmt(totalSgd)}</span></div>`;
+  }
   if (pendingSgdCount > 0) h += `<div class="total-pending">${pendingSgdCount} entries pending SGD</div>`;
   h += `<div class="total-entries">${exps.length} entries</div>`;
   h += '</div>';
@@ -1036,12 +1142,19 @@ function renderDashboard() {
   const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
   if (dates.length) {
     h += '<div class="breakdown"><div class="breakdown-title">By Day</div>';
+    if (isGroup) {
+      h += '<div class="breakdown-header"><span></span><span class="bh-right">My Share</span><span class="bh-right">Paid</span></div>';
+    }
     dates.forEach(date => {
       const dayExps = exps.filter(e => e.date === date);
       const dayF = dayExps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
       const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
-      // Day header
-      h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayF)}</span><span class="breakdown-val" style="color:var(--accent);">S$${fmt(daySgd)}</span></div>`;
+      if (isGroup) {
+        const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayMyShare)}</span><span class="breakdown-val" style="color:var(--text-muted);">$${fmt(dayF)}</span></div>`;
+      } else {
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayF)}</span><span class="breakdown-val" style="color:var(--accent);">S$${fmt(daySgd)}</span></div>`;
+      }
       // Card subtotals for this day
       const dayByCard = {}, dayByCardSgd = {};
       dayExps.forEach(e => {
@@ -1056,8 +1169,86 @@ function renderDashboard() {
     h += '</div>';
   }
 
+  // Settlement section (group trips only)
+  if (isGroup) {
+    const sharedExps = exps.filter(e => e.shared);
+    const totalSharedPaid = sharedExps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+    const totalMyShareShared = sharedExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+    const othersOwe = totalSharedPaid - totalMyShareShared;
+    const othersOweSgd = sharedExps.reduce((s,e) => {
+      const fullSgd = e.sgdAmount || 0;
+      const mySgd = getMySgdShare(e, state.trip);
+      return s + (fullSgd - mySgd);
+    }, 0);
+
+    h += '<div class="breakdown"><div class="breakdown-title">Settlement</div>';
+    if (sharedExps.length === 0) {
+      h += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No shared expenses yet.</div>';
+    } else {
+      h += `<div class="total-banner" style="margin-bottom:12px;">`;
+      h += `<div class="total-row"><span class="total-label">Others owe you (${c})</span><span class="total-value" style="color:#4ecdc4;">$${fmt(othersOwe)}</span></div>`;
+      h += `<div class="total-row"><span class="total-label">Others owe you (SGD)</span><span class="total-value" style="color:#4ecdc4;">S$${fmt(othersOweSgd)}</span></div>`;
+      h += `</div>`;
+      // Line items
+      const sharedDates = [...new Set(sharedExps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+      sharedDates.forEach(date => {
+        const dayShared = sharedExps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+        h += `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-top:8px;">${formatDate(date)}</div>`;
+        dayShared.forEach(e => {
+          const gs = e.splitCount || getGroupSize(state.trip);
+          const myShare = getMyShare(e, state.trip);
+          const eachShare = Math.round(e.amount / gs * 100) / 100;
+          const isCustom = e.myShare != null;
+          h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="font-size:11px;">${esc(e.description)}</span>`;
+          h += `<span class="breakdown-val" style="font-size:11px;">$${fmt(e.amount)}</span>`;
+          if (isCustom) {
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: $${fmt(myShare)}</span>`;
+          } else {
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = $${fmt(eachShare)}</span>`;
+          }
+          h += `</div>`;
+        });
+      });
+      h += `<button class="export-btn" id="copy-settlement" style="margin-top:12px;width:100%;">Copy Settlement</button>`;
+    }
+    h += '</div>';
+  }
+
   h += '</div>';
   document.getElementById("view-dashboard").innerHTML = h;
+
+  // Settlement copy handler
+  document.getElementById("copy-settlement")?.addEventListener("click", () => {
+    const exps = state.expenses.filter(e => e.shared && !state.deletedIds[e.id]);
+    const c = state.trip.currency;
+    const gs = getGroupSize(state.trip);
+    let text = `${state.trip.name} — Shared Expenses\nGroup: ${gs} people\n\n`;
+    const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+    dates.forEach(date => {
+      text += `${formatDate(date)}\n`;
+      exps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).forEach(e => {
+        const splitN = e.splitCount || gs;
+        const myShare = getMyShare(e, state.trip);
+        const isCustom = e.myShare != null;
+        if (isCustom) {
+          text += `  ${e.description}: ${c} ${e.amount.toFixed(2)} (My share: ${myShare.toFixed(2)}, Others: ${(e.amount - myShare).toFixed(2)})\n`;
+        } else {
+          text += `  ${e.description}: ${c} ${e.amount.toFixed(2)} ÷${splitN} = ${(e.amount/splitN).toFixed(2)} each\n`;
+        }
+      });
+      text += '\n';
+    });
+    const totalPaid = exps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+    const totalMyShare = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+    const othersOwe = totalPaid - totalMyShare;
+    const othersOweSgd = exps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, state.trip) + s, 0);
+    text += `Total shared: ${c} ${totalPaid.toFixed(2)}\n`;
+    text += `Others owe: ${c} ${othersOwe.toFixed(2)} (SGD ${othersOweSgd.toFixed(2)})\n`;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById("copy-settlement");
+      if (btn) { btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = "Copy Settlement"; }, 2000); }
+    });
+  });
 }
 
 // ─── Cards ─────────────────────────────────────────────
@@ -1073,6 +1264,19 @@ function renderCards() {
   h += '</div>';
   h += '<button class="save-cards-btn" id="save-cards">Save Cards</button>';
   h += '</div>';
+
+  // Group size (personal group trips)
+  if (isGroupTrip(state.trip)) {
+    const gs = getGroupSize(state.trip);
+    h += '<div class="backup-section"><h3 class="section-title">Group Size</h3>';
+    h += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+    for (let i = 2; i <= 5; i++) {
+      h += `<button class="type-btn ${gs===i?'active':''}" data-change-gs="${i}">${i}</button>`;
+    }
+    h += '</div>';
+    h += `<div style="font-size:11px;color:var(--text-muted);">Current: ${gs} people. Changing this only affects new shared entries.</div>`;
+    h += '</div>';
+  }
 
   // Sync settings
   h += '<div class="backup-section"><h3 class="section-title">Sync Settings</h3>';
@@ -1156,6 +1360,15 @@ function renderCards() {
   document.getElementById("sync-manual")?.addEventListener("click", () => {
     state.syncMode = "manual"; saveLocal("sync-mode", "manual"); render();
   });
+  // Group size change
+  document.querySelectorAll("[data-change-gs]").forEach(b => {
+    b.addEventListener("click", () => {
+      if (state.trip) {
+        state.trip.groupSize = parseInt(b.dataset.changeGs);
+        persist(); render();
+      }
+    });
+  });
 }
 
 // ─── History ───────────────────────────────────────────
@@ -1175,7 +1388,7 @@ function renderHistory() {
     el.addEventListener("click", () => {
       const pt = state.pastTrips.find(p=>p.id===el.dataset.load);
       if (pt) {
-        state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, createdAt:pt.createdAt };
+        state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, groupSize:pt.groupSize||1, createdAt:pt.createdAt };
         state.expenses = pt.expenses || [];
         state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
         state.isHistorical = true;
@@ -1205,6 +1418,8 @@ function renderSetup() {
   h += '</select>';
   h += '<label class="setup-label">Trip Type</label>';
   h += '<div class="type-toggle"><button class="type-btn active" id="type-personal" data-type="personal">Personal</button><button class="type-btn" id="type-work" data-type="work">Work</button></div>';
+  h += '<div id="group-size-section"><label class="setup-label">Group Size</label>';
+  h += '<div class="type-toggle"><button class="type-btn active" data-gs="1">Solo</button><button class="type-btn" data-gs="2">2</button><button class="type-btn" data-gs="3">3</button><button class="type-btn" data-gs="4">4</button><button class="type-btn" data-gs="5">5</button></div></div>';
   h += '<label class="setup-label">Date Format</label>';
   h += '<div class="type-toggle"><button class="type-btn active" id="fmt-ddmm" data-fmt="dd/mm">DD/MM</button><button class="type-btn" id="fmt-mmdd" data-fmt="mm/dd">MM/DD</button></div>';
   h += '<button class="setup-save" id="setup-save">Start Trip</button>';
@@ -1213,10 +1428,20 @@ function renderSetup() {
 
   let tripType = "personal";
   let dateFormat = "dd/mm";
+  let groupSize = 1;
   document.querySelectorAll(".type-btn[data-type]").forEach(b => {
     b.addEventListener("click", () => {
       tripType = b.dataset.type;
       document.querySelectorAll(".type-btn[data-type]").forEach(x => x.classList.toggle("active", x===b));
+      // Show/hide group size for personal trips
+      const gsSection = document.getElementById("group-size-section");
+      if (gsSection) gsSection.style.display = tripType === "personal" ? "" : "none";
+    });
+  });
+  document.querySelectorAll(".type-btn[data-gs]").forEach(b => {
+    b.addEventListener("click", () => {
+      groupSize = parseInt(b.dataset.gs);
+      document.querySelectorAll(".type-btn[data-gs]").forEach(x => x.classList.toggle("active", x===b));
     });
   });
   document.querySelectorAll(".type-btn[data-fmt]").forEach(b => {
@@ -1229,7 +1454,8 @@ function renderSetup() {
     const name = document.getElementById("setup-name").value.trim();
     const cur = document.getElementById("setup-currency").value;
     if (!name || !cur) return;
-    state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, createdAt:Date.now() };
+    const gs = tripType === "personal" ? groupSize : 1;
+    state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, groupSize:gs, createdAt:Date.now() };
     state.expenses = [];
     state.isHistorical = false;
     state.editingEnabled = false;
