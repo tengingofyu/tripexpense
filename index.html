@@ -12,7 +12,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
 import { getAnalytics } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-analytics.js';
 
 const firebaseConfig = {
@@ -33,7 +33,7 @@ const auth = getAuth(fbApp);
 try { getAnalytics(fbApp); } catch(e) { /* Analytics not enabled yet */ }
 
 // Expose to global scope for the non-module script
-window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
+window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
 <style>
 :root {
@@ -1681,12 +1681,23 @@ function initSwipeToDelete() {
 document.getElementById("sync-btn")?.addEventListener("click", () => manualSync());
 
 // Sign-in button
+// Smart sign-in: redirect for iOS standalone, popup for browser
+async function doSignIn(statusCallback) {
+  const { auth, signInWithPopup, signInWithRedirect, GoogleAuthProvider } = window.FB;
+  const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+  if (isStandalone) {
+    statusCallback("Redirecting...");
+    await signInWithRedirect(auth, new GoogleAuthProvider());
+  } else {
+    statusCallback("Signing in...");
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  }
+}
+
 document.getElementById("google-signin")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("auth-status");
   try {
-    statusEl.textContent = "Signing in...";
-    const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    await doSignIn(msg => { statusEl.textContent = msg; });
   } catch(e) {
     console.error("Sign-in error:", e);
     statusEl.textContent = "Sign-in failed: " + e.message;
@@ -1760,11 +1771,8 @@ function updateUserBar() {
       signinLink.textContent = "Sign in";
       signinLink.className = "signout-btn";
       signinLink.addEventListener("click", async () => {
-        if (!window.FB) return;
-        const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
         try {
-          signinLink.textContent = "Signing in...";
-          await signInWithPopup(auth, new GoogleAuthProvider());
+          await doSignIn(msg => { signinLink.textContent = msg; });
         } catch(e) {
           console.error("Sign-in error:", e);
           signinLink.textContent = "Failed — tap to retry";
@@ -1790,7 +1798,12 @@ if (!state.trip) { state.currentView = "history"; }
 // Step 2: Check if we should show sign-in or app
 function initAuth() {
   if (!window.FB) { setTimeout(initAuth, 100); return; }
-  const { auth, onAuthStateChanged } = window.FB;
+  const { auth, onAuthStateChanged, getRedirectResult } = window.FB;
+
+  // Handle redirect result (for iOS standalone sign-in)
+  getRedirectResult(auth).catch(e => {
+    console.error("Redirect result error:", e);
+  });
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
