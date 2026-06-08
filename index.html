@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
@@ -12,7 +12,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
-import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
 import { getAnalytics } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-analytics.js';
 
 const firebaseConfig = {
@@ -33,7 +33,7 @@ const auth = getAuth(fbApp);
 try { getAnalytics(fbApp); } catch(e) { /* Analytics not enabled yet */ }
 
 // Expose to global scope for the non-module script
-window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut };
+window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
 <style>
 :root {
@@ -1681,23 +1681,12 @@ function initSwipeToDelete() {
 document.getElementById("sync-btn")?.addEventListener("click", () => manualSync());
 
 // Sign-in button
-// Smart sign-in: redirect for iOS standalone, popup for browser
-async function doSignIn(statusCallback) {
-  const { auth, signInWithPopup, signInWithRedirect, GoogleAuthProvider } = window.FB;
-  const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
-  if (isStandalone) {
-    statusCallback("Redirecting...");
-    await signInWithRedirect(auth, new GoogleAuthProvider());
-  } else {
-    statusCallback("Signing in...");
-    await signInWithPopup(auth, new GoogleAuthProvider());
-  }
-}
-
 document.getElementById("google-signin")?.addEventListener("click", async () => {
   const statusEl = document.getElementById("auth-status");
   try {
-    await doSignIn(msg => { statusEl.textContent = msg; });
+    statusEl.textContent = "Signing in...";
+    const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
+    await signInWithPopup(auth, new GoogleAuthProvider());
   } catch(e) {
     console.error("Sign-in error:", e);
     statusEl.textContent = "Sign-in failed: " + e.message;
@@ -1771,8 +1760,11 @@ function updateUserBar() {
       signinLink.textContent = "Sign in";
       signinLink.className = "signout-btn";
       signinLink.addEventListener("click", async () => {
+        if (!window.FB) return;
+        const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
         try {
-          await doSignIn(msg => { signinLink.textContent = msg; });
+          signinLink.textContent = "Signing in...";
+          await signInWithPopup(auth, new GoogleAuthProvider());
         } catch(e) {
           console.error("Sign-in error:", e);
           signinLink.textContent = "Failed — tap to retry";
@@ -1798,12 +1790,7 @@ if (!state.trip) { state.currentView = "history"; }
 // Step 2: Check if we should show sign-in or app
 function initAuth() {
   if (!window.FB) { setTimeout(initAuth, 100); return; }
-  const { auth, onAuthStateChanged, getRedirectResult } = window.FB;
-
-  // Handle redirect result (for iOS standalone sign-in)
-  getRedirectResult(auth).catch(e => {
-    console.error("Redirect result error:", e);
-  });
+  const { auth, onAuthStateChanged } = window.FB;
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -1813,19 +1800,17 @@ function initAuth() {
       document.getElementById("app").classList.remove("hidden");
       updateUserBar();
 
-      // Silent auto-sync — preserve scroll position, no re-render unless data changed
+      // Silent auto-sync
       if (state.syncMode === "auto") {
         try {
           const prevCount = state.expenses.length;
           const scrollY = window.scrollY;
           await manualSync();
-          // Restore scroll if data count didn't change (just synced same data)
           if (state.expenses.length === prevCount) window.scrollTo(0, scrollY);
         } catch(e) {
           console.error("Auto-sync on load failed:", e);
         }
       }
-      // No render() here — manualSync already renders if needed, otherwise local data is already displayed
     } else {
       currentUser = null;
       if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
@@ -1833,7 +1818,6 @@ function initAuth() {
         document.getElementById("app").classList.remove("hidden");
         state.isOffline = true;
         updateUserBar();
-        // Don't re-render — already rendered from initial load
       } else {
         document.getElementById("auth-screen").classList.remove("hidden");
         document.getElementById("app").classList.add("hidden");
@@ -1842,14 +1826,19 @@ function initAuth() {
   });
 }
 
-// Show app immediately with local data
-document.getElementById("auth-screen").classList.add("hidden");
-document.getElementById("app").classList.remove("hidden");
-state.isOffline = true;
-updateUserBar();
-render();
+// If we have local data, show app immediately. Otherwise wait for Firebase.
+if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
+  document.getElementById("auth-screen").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  state.isOffline = true;
+  updateUserBar();
+  render();
+} else {
+  // No local data — might be returning from redirect. Show loading, let Firebase decide.
+  document.getElementById("auth-status").textContent = "Loading...";
+  render();
+}
 
-// Then check auth in background
 initAuth();
 </script>
 </body>
