@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://*.firebaseapp.com;">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
@@ -1743,6 +1743,8 @@ function updateUserBar() {
     } else {
       lastSync.textContent = "Not synced";
     }
+    const signinLink = document.getElementById("offline-signin");
+    if (signinLink) signinLink.style.display = "none";
   } else {
     bar.classList.remove("online");
     bar.classList.add("offline");
@@ -1750,6 +1752,28 @@ function updateUserBar() {
     syncBtn.style.display = "none";
     signout.style.display = "none";
     lastSync.textContent = "";
+    // Show sign-in link in offline mode
+    let signinLink = document.getElementById("offline-signin");
+    if (!signinLink) {
+      signinLink = document.createElement("button");
+      signinLink.id = "offline-signin";
+      signinLink.textContent = "Sign in";
+      signinLink.className = "signout-btn";
+      signinLink.addEventListener("click", async () => {
+        if (!window.FB) return;
+        const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
+        try {
+          signinLink.textContent = "Signing in...";
+          await signInWithPopup(auth, new GoogleAuthProvider());
+        } catch(e) {
+          console.error("Sign-in error:", e);
+          signinLink.textContent = "Failed — tap to retry";
+          setTimeout(() => { signinLink.textContent = "Sign in"; }, 3000);
+        }
+      });
+      bar.appendChild(signinLink);
+    }
+    signinLink.style.display = "";
   }
 }
 
