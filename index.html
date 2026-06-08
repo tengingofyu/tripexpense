@@ -13,6 +13,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { getAnalytics } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-analytics.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCHoMZNv-o4VssCeSjAFKDb2iRpb1QXwQ0",
@@ -20,12 +21,16 @@ const firebaseConfig = {
   projectId: "tripexpense-15d99",
   storageBucket: "tripexpense-15d99.firebasestorage.app",
   messagingSenderId: "434736138161",
-  appId: "1:434736138161:web:62d955bede88bd822d9f90"
+  appId: "1:434736138161:web:62d955bede88bd822d9f90",
+  measurementId: "G-PLACEHOLDER"
 };
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 const auth = getAuth(fbApp);
+
+// Analytics — auto-tracks page views and active users only. No custom events, no personal data.
+try { getAnalytics(fbApp); } catch(e) { /* Analytics not enabled yet */ }
 
 // Expose to global scope for the non-module script
 window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
