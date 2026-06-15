@@ -559,17 +559,18 @@ function esc(s) { const d=document.createElement("div"); d.textContent=s; return
 // Shared expense helpers
 function getGroupSize(trip) { return (trip && trip.groupSize) || 1; }
 function isGroupTrip(trip) { return trip && trip.type === "personal" && getGroupSize(trip) > 1; }
+function isSgdOnlyEntry(e) { return e.isSgdOnly || (e.amount === 0 && (e.sgdAmount || 0) > 0); }
 function getMyShare(e, trip) {
-  if (!e.shared) return e.isSgdOnly ? 0 : e.amount;
+  if (!e.shared) return isSgdOnlyEntry(e) ? 0 : e.amount;
   if (e.myShare != null) return e.myShare;
   const gs = e.splitCount || getGroupSize(trip);
-  const fullAmt = e.isSgdOnly ? (e.sgdAmount || 0) : e.amount;
+  const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
   return Math.round(fullAmt / gs * 100) / 100;
 }
 function getMySgdShare(e, trip) {
   if (!e.shared) return e.sgdAmount || 0;
   const myAmt = getMyShare(e, trip);
-  const fullAmt = e.isSgdOnly ? (e.sgdAmount || 0) : e.amount;
+  const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
   if (!fullAmt) return 0;
   return Math.round(myAmt / fullAmt * (e.sgdAmount || 0) * 100) / 100;
 }
@@ -655,7 +656,7 @@ function renderExpenses() {
     if (state.pendingExpense) {
       const pe = state.pendingExpense;
       html += '<div class="claim-prompt">';
-      const peAmtText = pe.isSgdOnly ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
+      const peAmtText = isSgdOnlyEntry(pe) ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
       if (state.pendingType === "claimable") {
         html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
         html += '<div class="claim-buttons">';
@@ -679,8 +680,8 @@ function renderExpenses() {
     html += '<div class="empty">No expenses yet.</div>';
   } else {
     for (const [date, exps] of Object.entries(grouped)) {
-      const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
-      const daySgdOnly = exps.filter(e=>!state.deletedIds[e.id] && e.isSgdOnly).reduce((s,e) => s + (e.sgdAmount||0), 0);
+      const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+      const daySgdOnly = exps.filter(e=>!state.deletedIds[e.id] && isSgdOnlyEntry(e)).reduce((s,e) => s + (e.sgdAmount||0), 0);
       let dayTotalText = `${c} ${dayTotal.toFixed(2)}`;
       if (daySgdOnly > 0) dayTotalText += ` + SGD ${daySgdOnly.toFixed(2)}`;
       html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${dayTotalText}</span></div>`;
@@ -710,7 +711,7 @@ function renderExpenses() {
         if (e.shared) html += `<span class="tag-shared">÷${e.splitCount || getGroupSize(state.trip)}</span>`;
         html += '</div></div>';
         html += '<div class="expense-right">';
-        if (e.isSgdOnly) {
+        if (isSgdOnlyEntry(e)) {
           html += `<span class="expense-amount">SGD ${(e.sgdAmount||0).toFixed(2)}</span>`;
         } else {
           html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
@@ -772,7 +773,7 @@ function renderEditForm(e) {
   if (isGroupTrip(state.trip)) {
     const gs = e.splitCount || getGroupSize(state.trip);
     const myShare = getMyShare(e, state.trip);
-    const fullAmt = (e.isSgdOnly || e.amount === 0) ? (e.sgdAmount || 0) : e.amount;
+    const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
     const displayShare = e.shared ? myShare : Math.round(fullAmt / gs * 100) / 100;
     html += `<label class="edit-claim-label"><input type="checkbox" id="edit-shared" ${e.shared?'checked':''}> Shared</label>`;
     html += `<div id="shared-fields" style="${e.shared?'':'display:none;'}">`;
@@ -876,7 +877,7 @@ function bindExpenseEvents() {
           const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
           const ms = parseFloat(document.getElementById("edit-my-share")?.value);
           state.expenses[idx].splitCount = sc;
-          const fullAmt = (state.expenses[idx].isSgdOnly || state.expenses[idx].amount === 0) ? (state.expenses[idx].sgdAmount || 0) : state.expenses[idx].amount;
+          const fullAmt = (isSgdOnlyEntry(state.expenses[idx])) ? (state.expenses[idx].sgdAmount || 0) : state.expenses[idx].amount;
           const evenShare = Math.round(fullAmt / sc * 100) / 100;
           state.expenses[idx].myShare = (!isNaN(ms) && Math.abs(ms - evenShare) > 0.01) ? ms : null;
         } else {
@@ -1075,7 +1076,7 @@ function generateCsv() {
   if (isGroup) h.push("Shared","My Share","My Share SGD");
   const rows = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0))
     .map(e => {
-      const row = [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', e.isSgdOnly ? "" : e.amount.toFixed(2), e.isSgdOnly ? "SGD" : e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||""];
+      const row = [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', isSgdOnlyEntry(e) ? "" : e.amount.toFixed(2), isSgdOnlyEntry(e) ? "SGD" : e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||""];
       if (isWork) row.push(e.claimable?"Yes":"No");
       if (isGroup) {
         row.push(e.shared?"Yes":"No");
@@ -1094,19 +1095,19 @@ function renderDashboard() {
   const claimable = exps.filter(e => e.claimable);
   const nonClaimable = exps.filter(e => !e.claimable);
 
-  const totalF = exps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+  const totalF = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
   const totalSgd = exps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
-  const claimF = claimable.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+  const claimF = claimable.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
   const claimSgd = claimable.reduce((s,e) => s + (e.sgdAmount || 0), 0);
-  const nonClaimF = nonClaimable.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+  const nonClaimF = nonClaimable.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
   const nonClaimSgd = nonClaimable.reduce((s,e) => s + (e.sgdAmount || 0), 0);
-  const pendingSgdCount = exps.filter(e => !e.sgdAmount && !e.isSgdOnly).length;
+  const pendingSgdCount = exps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
 
   // By card: track both USD and SGD
   const byCard = {}, byCardSgd = {}, byCat = {}, byCatSgd = {};
   exps.forEach(e => {
     const n = e.cardName||"Unknown";
-    const amt = e.isSgdOnly ? 0 : e.amount;
+    const amt = isSgdOnlyEntry(e) ? 0 : e.amount;
     const sgd = e.sgdAmount || 0;
     byCard[n] = (byCard[n]||0) + amt;
     byCardSgd[n] = (byCardSgd[n]||0) + sgd;
@@ -1168,7 +1169,7 @@ function renderDashboard() {
     }
     dates.forEach(date => {
       const dayExps = exps.filter(e => e.date === date);
-      const dayF = dayExps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+      const dayF = dayExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
       const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
       if (isGroup) {
         const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
@@ -1180,7 +1181,7 @@ function renderDashboard() {
       const dayByCard = {}, dayByCardSgd = {};
       dayExps.forEach(e => {
         const n = e.cardName || "Unknown";
-        dayByCard[n] = (dayByCard[n]||0) + (e.isSgdOnly ? 0 : e.amount);
+        dayByCard[n] = (dayByCard[n]||0) + (isSgdOnlyEntry(e) ? 0 : e.amount);
         dayByCardSgd[n] = (dayByCardSgd[n]||0) + (e.sgdAmount || 0);
       });
       Object.entries(dayByCard).sort((a,b) => b[1]-a[1]).forEach(([n,a]) => {
@@ -1193,7 +1194,7 @@ function renderDashboard() {
   // Settlement section (group trips only)
   if (isGroup) {
     const sharedExps = exps.filter(e => e.shared);
-    const totalSharedPaid = sharedExps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+    const totalSharedPaid = sharedExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
     const totalMyShareShared = sharedExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const othersOwe = totalSharedPaid - totalMyShareShared;
     const othersOweSgd = sharedExps.reduce((s,e) => {
@@ -1218,14 +1219,16 @@ function renderDashboard() {
         dayShared.forEach(e => {
           const gs = e.splitCount || getGroupSize(state.trip);
           const myShare = getMyShare(e, state.trip);
-          const eachShare = Math.round(e.amount / gs * 100) / 100;
+          const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
+          const eachShare = Math.round(dispAmt / gs * 100) / 100;
           const isCustom = e.myShare != null;
+          const prefix = isSgdOnlyEntry(e) ? "S$" : "$";
           h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="font-size:11px;">${esc(e.description)}</span>`;
-          h += `<span class="breakdown-val" style="font-size:11px;">$${fmt(e.amount)}</span>`;
+          h += `<span class="breakdown-val" style="font-size:11px;">${prefix}${fmt(dispAmt)}</span>`;
           if (isCustom) {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: $${fmt(myShare)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: ${prefix}${fmt(myShare)}</span>`;
           } else {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = $${fmt(eachShare)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = ${prefix}${fmt(eachShare)}</span>`;
           }
           h += `</div>`;
         });
@@ -1251,15 +1254,17 @@ function renderDashboard() {
         const splitN = e.splitCount || gs;
         const myShare = getMyShare(e, state.trip);
         const isCustom = e.myShare != null;
+        const dispCur = isSgdOnlyEntry(e) ? "SGD" : c;
+        const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
         if (isCustom) {
-          text += `  ${e.description}: ${c} ${e.amount.toFixed(2)} (My share: ${myShare.toFixed(2)}, Others: ${(e.amount - myShare).toFixed(2)})\n`;
+          text += `  ${e.description}: ${dispCur} ${dispAmt.toFixed(2)} (My share: ${myShare.toFixed(2)}, Others: ${(dispAmt - myShare).toFixed(2)})\n`;
         } else {
-          text += `  ${e.description}: ${c} ${e.amount.toFixed(2)} ÷${splitN} = ${(e.amount/splitN).toFixed(2)} each\n`;
+          text += `  ${e.description}: ${dispCur} ${dispAmt.toFixed(2)} ÷${splitN} = ${(dispAmt/splitN).toFixed(2)} each\n`;
         }
       });
       text += '\n';
     });
-    const totalPaid = exps.reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
+    const totalPaid = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
     const totalMyShare = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const othersOwe = totalPaid - totalMyShare;
     const othersOweSgd = exps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, state.trip) + s, 0);
