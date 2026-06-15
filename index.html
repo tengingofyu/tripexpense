@@ -78,9 +78,6 @@ input[type="number"] { -moz-appearance: textfield; }
 .input-row { display: flex; gap: 8px; }
 .main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
 .main-input:disabled { opacity: 0.5; }
-.add-btn { flex: 0 0 auto; padding: 0 18px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.add-btn:disabled { opacity: 0.4; cursor: default; }
-.add-btn:active { transform: scale(0.97); }
 
 /* Preview */
 .preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
@@ -89,6 +86,7 @@ input[type="number"] { -moz-appearance: textfield; }
 .preview-card { font-size: 10px; padding: 2px 6px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
 .preview-cat { font-size: 10px; padding: 2px 6px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
 .preview-desc { font-size: 12px; color: var(--text-dim); }
+.preview-submit { background: var(--accent); border: none; color: #fff; font-size: 16px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: auto; }
 
 /* Claim prompt */
 .claim-prompt { margin-top: 10px; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
@@ -470,13 +468,6 @@ async function manualSync() {
 // ─── Helpers ───────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
-// Currency-aware display formatter: thousands separators + correct decimals.
-// Zero-decimal currencies (KRW, JPY, etc.) render as whole numbers. Display only — NOT used in CSV.
-const ZERO_DP_CURRENCIES = new Set(["JPY","KRW","VND","IDR","ISK","KHR","LAK","MMK"]);
-function money(amount, currency) {
-  const dp = ZERO_DP_CURRENCIES.has((currency || "").toUpperCase()) ? 0 : 2;
-  return Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
-}
 function todayStr() { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function formatDate(ds) {
   const [y,m,d] = ds.split("-").map(Number);
@@ -572,7 +563,8 @@ function getMyShare(e, trip) {
   if (!e.shared) return e.isSgdOnly ? 0 : e.amount;
   if (e.myShare != null) return e.myShare;
   const gs = e.splitCount || getGroupSize(trip);
-  return Math.round((e.isSgdOnly ? 0 : e.amount) / gs * 100) / 100;
+  const fullAmt = e.isSgdOnly ? (e.sgdAmount || 0) : e.amount;
+  return Math.round(fullAmt / gs * 100) / 100;
 }
 function getMySgdShare(e, trip) {
   if (!e.shared) return e.sgdAmount || 0;
@@ -658,13 +650,12 @@ function renderExpenses() {
     html += '<div class="quick-entry">';
     html += '<div class="input-row">';
     html += `<input class="main-input" id="expense-input" type="text" placeholder="amount description card" ${state.pendingExpense ? 'disabled' : ''}>`;
-    html += `<button class="add-btn" id="add-btn" ${state.pendingExpense ? 'disabled' : ''}>Add</button>`;
     html += '</div>';
     // Claim/Shared prompt
     if (state.pendingExpense) {
       const pe = state.pendingExpense;
       html += '<div class="claim-prompt">';
-      const peAmtText = pe.isSgdOnly ? `SGD ${money(pe.sgdAmount||0, "SGD")}` : `${c} ${money(pe.amount, c)}`;
+      const peAmtText = pe.isSgdOnly ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
       if (state.pendingType === "claimable") {
         html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
         html += '<div class="claim-buttons">';
@@ -690,8 +681,8 @@ function renderExpenses() {
     for (const [date, exps] of Object.entries(grouped)) {
       const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (e.isSgdOnly ? 0 : e.amount), 0);
       const daySgdOnly = exps.filter(e=>!state.deletedIds[e.id] && e.isSgdOnly).reduce((s,e) => s + (e.sgdAmount||0), 0);
-      let dayTotalText = `${c} ${money(dayTotal, c)}`;
-      if (daySgdOnly > 0) dayTotalText += ` + SGD ${money(daySgdOnly, "SGD")}`;
+      let dayTotalText = `${c} ${dayTotal.toFixed(2)}`;
+      if (daySgdOnly > 0) dayTotalText += ` + SGD ${daySgdOnly.toFixed(2)}`;
       html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${dayTotalText}</span></div>`;
       for (const e of exps) {
         if (state.deletedIds[e.id]) {
@@ -720,11 +711,11 @@ function renderExpenses() {
         html += '</div></div>';
         html += '<div class="expense-right">';
         if (e.isSgdOnly) {
-          html += `<span class="expense-amount">SGD ${money(e.sgdAmount||0, "SGD")}</span>`;
+          html += `<span class="expense-amount">SGD ${(e.sgdAmount||0).toFixed(2)}</span>`;
         } else {
-          html += `<span class="expense-amount">${c} ${money(e.amount, c)}</span>`;
+          html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
           if (e.sgdAmount) {
-            html += `<span class="expense-sgd">SGD ${money(e.sgdAmount, "SGD")}</span>`;
+            html += `<span class="expense-sgd">SGD ${e.sgdAmount.toFixed(2)}</span>`;
           } else {
             html += `<span class="expense-sgd sgd-pending">SGD pending</span>`;
           }
@@ -781,12 +772,14 @@ function renderEditForm(e) {
   if (isGroupTrip(state.trip)) {
     const gs = e.splitCount || getGroupSize(state.trip);
     const myShare = getMyShare(e, state.trip);
+    const fullAmt = (e.isSgdOnly || e.amount === 0) ? (e.sgdAmount || 0) : e.amount;
+    const displayShare = e.shared ? myShare : Math.round(fullAmt / gs * 100) / 100;
     html += `<label class="edit-claim-label"><input type="checkbox" id="edit-shared" ${e.shared?'checked':''}> Shared</label>`;
     html += `<div id="shared-fields" style="${e.shared?'':'display:none;'}">`;
     html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">Split ÷</label><select class="edit-select" id="edit-split-count" style="width:60px;">`;
     for (let i = 2; i <= 5; i++) html += `<option value="${i}" ${gs===i?'selected':''}>${i}</option>`;
     html += `</select></div>`;
-    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" step="0.01" value="${myShare.toFixed(2)}" style="width:80px;"></div>`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" step="0.01" value="${displayShare.toFixed(2)}" style="width:80px;"></div>`;
     html += `</div>`;
   }
   html += '</div>';
@@ -833,8 +826,6 @@ function bindExpenseEvents() {
     input.addEventListener("keydown", (ev) => { if (ev.key==="Enter") { ev.preventDefault(); submitExpense(input.value); } });
     input.addEventListener("focus", () => { setTimeout(() => { input.scrollIntoView({ behavior:"smooth", block:"nearest" }); }, 300); });
   }
-  const addBtn = document.getElementById("add-btn");
-  if (addBtn) addBtn.addEventListener("click", () => { const inp = document.getElementById("expense-input"); if (inp) submitExpense(inp.value); });
   const cy = document.getElementById("claim-yes");
   const cn = document.getElementById("claim-no");
   if (cy) cy.addEventListener("click", () => resolveClaim(true));
@@ -885,9 +876,11 @@ function bindExpenseEvents() {
           const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
           const ms = parseFloat(document.getElementById("edit-my-share")?.value);
           state.expenses[idx].splitCount = sc;
-          const evenShare = Math.round(state.expenses[idx].amount / sc * 100) / 100;
+          const fullAmt = (state.expenses[idx].isSgdOnly || state.expenses[idx].amount === 0) ? (state.expenses[idx].sgdAmount || 0) : state.expenses[idx].amount;
+          const evenShare = Math.round(fullAmt / sc * 100) / 100;
           state.expenses[idx].myShare = (!isNaN(ms) && Math.abs(ms - evenShare) > 0.01) ? ms : null;
         } else {
+          state.expenses[idx].shared = false;
           state.expenses[idx].splitCount = null;
           state.expenses[idx].myShare = null;
         }
@@ -910,14 +903,25 @@ function bindExpenseEvents() {
     sharedCheck.addEventListener("change", () => {
       const fields = document.getElementById("shared-fields");
       if (fields) fields.style.display = sharedCheck.checked ? "" : "none";
+      // Recalculate My Share when toggling shared on
+      if (sharedCheck.checked) {
+        const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
+        const sgdAmt = parseFloat(document.getElementById("edit-sgd")?.value) || 0;
+        const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
+        const fullAmt = amt > 0 ? amt : sgdAmt; // Use SGD for SGD-only entries
+        const msField = document.getElementById("edit-my-share");
+        if (msField) msField.value = (fullAmt / sc).toFixed(2);
+      }
     });
     // Update my share when split count changes
     const splitSelect = document.getElementById("edit-split-count");
     if (splitSelect) splitSelect.addEventListener("change", () => {
       const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
+      const sgdAmt = parseFloat(document.getElementById("edit-sgd")?.value) || 0;
       const sc = parseInt(splitSelect.value) || 2;
+      const fullAmt = amt > 0 ? amt : sgdAmt;
       const msField = document.getElementById("edit-my-share");
-      if (msField) msField.value = (amt / sc).toFixed(2);
+      if (msField) msField.value = (fullAmt / sc).toFixed(2);
     });
   }
   const toggleCsv = document.getElementById("toggle-csv");
@@ -947,18 +951,21 @@ function updatePreview(val) {
   let h = '';
   if (p.parsedDate) h += `<span class="preview-date">${formatDate(p.parsedDate)}</span>`;
   if (p.isSgdOnly) {
-    h += `<span class="preview-amount">SGD ${money(p.sgdAmount, "SGD")}</span>`;
+    h += `<span class="preview-amount">SGD ${p.sgdAmount.toFixed(2)}</span>`;
   } else {
-    h += `<span class="preview-amount">${c} ${money(p.amount, c)}</span>`;
+    h += `<span class="preview-amount">${c} ${p.amount.toFixed(2)}</span>`;
     if (p.sgdAmount) {
-      h += `<span class="preview-sgd">SGD ${money(p.sgdAmount, "SGD")}</span>`;
+      h += `<span class="preview-sgd">SGD ${p.sgdAmount.toFixed(2)}</span>`;
       h += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
     }
   }
   if (p.card) h += `<span class="preview-card">${esc(p.card.name)}</span>`;
   h += `<span class="preview-cat">${p.category}</span>`;
   if (p.description) h += `<span class="preview-desc">${esc(p.description)}</span>`;
+  h += `<button class="preview-submit" id="preview-submit">✓</button>`;
   prev.innerHTML = h;
+  // Bind submit
+  bindPreviewSubmit();
   // Bind swap
   const swapBtn = document.getElementById("swap-amounts");
   if (swapBtn) swapBtn.addEventListener("click", () => {
@@ -971,15 +978,25 @@ function updatePreview(val) {
       const lp = state.lastPreview;
       let h2 = '';
       if (lp.parsedDate) h2 += `<span class="preview-date">${formatDate(lp.parsedDate)}</span>`;
-      h2 += `<span class="preview-amount">${c} ${money(lp.amount, c)}</span>`;
-      h2 += `<span class="preview-sgd">SGD ${money(lp.sgdAmount, "SGD")}</span>`;
+      h2 += `<span class="preview-amount">${c} ${lp.amount.toFixed(2)}</span>`;
+      h2 += `<span class="preview-sgd">SGD ${lp.sgdAmount.toFixed(2)}</span>`;
       h2 += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
       if (lp.card) h2 += `<span class="preview-card">${esc(lp.card.name)}</span>`;
       h2 += `<span class="preview-cat">${lp.category}</span>`;
       if (lp.description) h2 += `<span class="preview-desc">${esc(lp.description)}</span>`;
+      h2 += `<button class="preview-submit" id="preview-submit">✓</button>`;
       prev.innerHTML = h2;
+      bindPreviewSubmit();
       document.getElementById("swap-amounts")?.addEventListener("click", arguments.callee);
     }
+  });
+}
+
+function bindPreviewSubmit() {
+  const btn = document.getElementById("preview-submit");
+  if (btn) btn.addEventListener("click", () => {
+    const input = document.getElementById("expense-input");
+    if (input) submitExpense(input.value);
   });
 }
 
@@ -1105,12 +1122,12 @@ function renderDashboard() {
   if (isGroup) {
     const myShareF = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, state.trip), 0);
-    h += `<div class="total-row"><span class="total-label">My Share (${c})</span><span class="total-value">$${money(myShareF, c)}</span></div>`;
-    h += `<div class="total-row"><span class="total-label">My Share (SGD)</span><span class="total-value">S$${money(mySgdShare, "SGD")}</span></div>`;
-    h += `<div class="total-row" style="opacity:0.5;font-size:12px;"><span class="total-label">Total Paid (${c})</span><span class="total-value">$${money(totalF, c)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">My Share (${c})</span><span class="total-value">$${fmt(myShareF)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">My Share (SGD)</span><span class="total-value">S$${fmt(mySgdShare)}</span></div>`;
+    h += `<div class="total-row" style="opacity:0.5;font-size:12px;"><span class="total-label">Total Paid (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
   } else {
-    h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${money(totalF, c)}</span></div>`;
-    h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${money(totalSgd, "SGD")}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${fmt(totalSgd)}</span></div>`;
   }
   if (pendingSgdCount > 0) h += `<div class="total-pending">${pendingSgdCount} entries pending SGD</div>`;
   h += `<div class="total-entries">${exps.length} entries</div>`;
@@ -1120,8 +1137,8 @@ function renderDashboard() {
   if (state.trip.type === "work") {
     h += '<div class="breakdown"><div class="breakdown-title">Claimable vs Personal</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
-    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">$${money(claimF, c)}</span><span class="breakdown-val">S$${money(claimSgd, "SGD")}</span></div>`;
-    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">$${money(nonClaimF, c)}</span><span class="breakdown-val">S$${money(nonClaimSgd, "SGD")}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">$${fmt(claimF)}</span><span class="breakdown-val">S$${fmt(claimSgd)}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">$${fmt(nonClaimF)}</span><span class="breakdown-val">S$${fmt(nonClaimSgd)}</span></div>`;
     h += '</div>';
   }
 
@@ -1129,7 +1146,7 @@ function renderDashboard() {
     h += '<div class="breakdown"><div class="breakdown-title">By Card</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
     Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
-      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${money(a, c)}</span><span class="breakdown-val">S$${money(byCardSgd[n]||0, "SGD")}</span></div>`;
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${fmt(a)}</span><span class="breakdown-val">S$${fmt(byCardSgd[n]||0)}</span></div>`;
     });
     h += '</div>';
   }
@@ -1137,7 +1154,7 @@ function renderDashboard() {
     h += '<div class="breakdown"><div class="breakdown-title">By Category</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
     Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
-      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${money(a, c)}</span><span class="breakdown-val">S$${money(byCatSgd[n]||0, "SGD")}</span></div>`;
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${fmt(a)}</span><span class="breakdown-val">S$${fmt(byCatSgd[n]||0)}</span></div>`;
     });
     h += '</div>';
   }
@@ -1155,9 +1172,9 @@ function renderDashboard() {
       const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
       if (isGroup) {
         const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
-        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${money(dayMyShare, c)}</span><span class="breakdown-val" style="color:var(--text-muted);">$${money(dayF, c)}</span></div>`;
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayMyShare)}</span><span class="breakdown-val" style="color:var(--text-muted);">$${fmt(dayF)}</span></div>`;
       } else {
-        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${money(dayF, c)}</span><span class="breakdown-val" style="color:var(--accent);">S$${money(daySgd, "SGD")}</span></div>`;
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayF)}</span><span class="breakdown-val" style="color:var(--accent);">S$${fmt(daySgd)}</span></div>`;
       }
       // Card subtotals for this day
       const dayByCard = {}, dayByCardSgd = {};
@@ -1167,7 +1184,7 @@ function renderDashboard() {
         dayByCardSgd[n] = (dayByCardSgd[n]||0) + (e.sgdAmount || 0);
       });
       Object.entries(dayByCard).sort((a,b) => b[1]-a[1]).forEach(([n,a]) => {
-        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">$${money(a, c)}</span><span class="breakdown-val" style="font-size:11px;">S$${money(dayByCardSgd[n]||0, "SGD")}</span></div>`;
+        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">$${fmt(a)}</span><span class="breakdown-val" style="font-size:11px;">S$${fmt(dayByCardSgd[n]||0)}</span></div>`;
       });
     });
     h += '</div>';
@@ -1190,8 +1207,8 @@ function renderDashboard() {
       h += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No shared expenses yet.</div>';
     } else {
       h += `<div class="total-banner" style="margin-bottom:12px;">`;
-      h += `<div class="total-row"><span class="total-label">Others owe you (${c})</span><span class="total-value" style="color:#4ecdc4;">$${money(othersOwe, c)}</span></div>`;
-      h += `<div class="total-row"><span class="total-label">Others owe you (SGD)</span><span class="total-value" style="color:#4ecdc4;">S$${money(othersOweSgd, "SGD")}</span></div>`;
+      h += `<div class="total-row"><span class="total-label">Others owe you (${c})</span><span class="total-value" style="color:#4ecdc4;">$${fmt(othersOwe)}</span></div>`;
+      h += `<div class="total-row"><span class="total-label">Others owe you (SGD)</span><span class="total-value" style="color:#4ecdc4;">S$${fmt(othersOweSgd)}</span></div>`;
       h += `</div>`;
       // Line items
       const sharedDates = [...new Set(sharedExps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
@@ -1204,11 +1221,11 @@ function renderDashboard() {
           const eachShare = Math.round(e.amount / gs * 100) / 100;
           const isCustom = e.myShare != null;
           h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="font-size:11px;">${esc(e.description)}</span>`;
-          h += `<span class="breakdown-val" style="font-size:11px;">$${money(e.amount, c)}</span>`;
+          h += `<span class="breakdown-val" style="font-size:11px;">$${fmt(e.amount)}</span>`;
           if (isCustom) {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: $${money(myShare, c)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: $${fmt(myShare)}</span>`;
           } else {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = $${money(eachShare, c)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = $${fmt(eachShare)}</span>`;
           }
           h += `</div>`;
         });
@@ -1235,9 +1252,9 @@ function renderDashboard() {
         const myShare = getMyShare(e, state.trip);
         const isCustom = e.myShare != null;
         if (isCustom) {
-          text += `  ${e.description}: ${c} ${money(e.amount, c)} (My share: ${money(myShare, c)}, Others: ${money(e.amount - myShare, c)})\n`;
+          text += `  ${e.description}: ${c} ${e.amount.toFixed(2)} (My share: ${myShare.toFixed(2)}, Others: ${(e.amount - myShare).toFixed(2)})\n`;
         } else {
-          text += `  ${e.description}: ${c} ${money(e.amount, c)} ÷${splitN} = ${money(e.amount/splitN, c)} each\n`;
+          text += `  ${e.description}: ${c} ${e.amount.toFixed(2)} ÷${splitN} = ${(e.amount/splitN).toFixed(2)} each\n`;
         }
       });
       text += '\n';
@@ -1246,8 +1263,8 @@ function renderDashboard() {
     const totalMyShare = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const othersOwe = totalPaid - totalMyShare;
     const othersOweSgd = exps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, state.trip) + s, 0);
-    text += `Total shared: ${c} ${money(totalPaid, c)}\n`;
-    text += `Others owe: ${c} ${money(othersOwe, c)} (SGD ${money(othersOweSgd, "SGD")})\n`;
+    text += `Total shared: ${c} ${totalPaid.toFixed(2)}\n`;
+    text += `Others owe: ${c} ${othersOwe.toFixed(2)} (SGD ${othersOweSgd.toFixed(2)})\n`;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById("copy-settlement");
       if (btn) { btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = "Copy Settlement"; }, 2000); }
