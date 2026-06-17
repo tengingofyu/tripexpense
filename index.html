@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com https://firestore.googleapis.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com wss://*.firebaseio.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
@@ -322,6 +322,7 @@ let state = {
   pendingExpense: null,
   pendingType: null,
   deletedIds: {},
+  deletedCardIds: [],
   editingId: null,
   
   showRestore: false,
@@ -373,6 +374,7 @@ async function saveToFirebase() {
       trip: state.trip,
       expenses: state.expenses,
       cards: state.cards,
+      deletedCardIds: state.deletedCardIds,
       pastTrips: state.pastTrips,
       updatedAt: Date.now(),
     });
@@ -401,6 +403,7 @@ function loadState() {
   state.trip = loadLocal("trip", null);
   state.expenses = loadLocal("expenses", []);
   state.cards = loadLocal("cards", DEFAULT_CARDS);
+  state.deletedCardIds = loadLocal("deleted-card-ids", []);
   state.pastTrips = loadLocal("past-trips", []);
   state.syncMode = loadLocal("sync-mode", "auto");
   state.lastSyncAt = loadLocal("last-sync-at", null);
@@ -433,6 +436,7 @@ function persist() {
   saveLocal("trip", state.trip);
   saveLocal("expenses", state.expenses);
   saveLocal("cards", state.cards);
+  saveLocal("deleted-card-ids", state.deletedCardIds);
   saveLocal("past-trips", state.pastTrips);
   // Auto-sync to Firebase if enabled and signed in
   if (state.syncMode === "auto" && currentUser) {
@@ -485,9 +489,14 @@ async function manualSync() {
       });
       state.pastTrips = Object.values(mergedPastMap);
 
+      // Cards: merge, but respect deletions tracked in deletedCardIds
+      const cloudDeletedCards = cloud.deletedCardIds || [];
+      state.deletedCardIds = [...new Set([...state.deletedCardIds, ...cloudDeletedCards])];
       const mergedCardMap = {};
       state.cards.forEach(c => { mergedCardMap[c.id] = c; });
       (cloud.cards || []).forEach(c => { mergedCardMap[c.id] = c; });
+      // Remove any card that's been deleted on either device
+      state.deletedCardIds.forEach(id => { delete mergedCardMap[id]; });
       state.cards = Object.values(mergedCardMap);
 
       // ─── Trip merge ───
@@ -689,7 +698,7 @@ function render() {
     navEl.innerHTML = '';
     const tabs = state.isHistorical ? ["expenses","dashboard","history"] : ["expenses","dashboard","cards","history"];
     tabs.forEach(v => {
-      const label = v === "dashboard" ? "Summary" : v.charAt(0).toUpperCase() + v.slice(1);
+      const label = v === "dashboard" ? "Summary" : v === "cards" ? "Settings" : v.charAt(0).toUpperCase() + v.slice(1);
       const btn = document.createElement("button");
       btn.textContent = label;
       btn.dataset.view = v;
@@ -850,8 +859,9 @@ function renderEditForm(e) {
   let html = '<div class="expense-edit">';
   html += '<div class="edit-grid">';
   html += `<input class="edit-input" id="edit-date" type="date" value="${e.date}">`;
+  const amtStep = (state.trip && ZERO_DECIMAL.has(state.trip.currency)) ? "1" : "0.01";
   html += `<input class="edit-input" id="edit-desc" value="${esc(e.description)}" placeholder="Description">`;
-  html += `<input class="edit-input" id="edit-amount" type="number" step="0.01" value="${e.amount}" placeholder="Amount">`;
+  html += `<input class="edit-input" id="edit-amount" type="number" step="${amtStep}" value="${e.amount}" placeholder="Amount">`;
   html += `<input class="edit-input" id="edit-sgd" type="number" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
   html += '<select class="edit-select" id="edit-card">';
   html += '<option value="">No card</option>';
@@ -868,12 +878,16 @@ function renderEditForm(e) {
     const myShare = getMyShare(e, state.trip);
     const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
     const displayShare = e.shared ? myShare : Math.round(fullAmt / gs * 100) / 100;
+    const shareCur = isSgdOnlyEntry(e) ? "SGD" : state.trip.currency;
+    const shareIsZero = ZERO_DECIMAL.has(shareCur);
+    const shareVal = shareIsZero ? Math.round(displayShare) : displayShare.toFixed(2);
+    const shareStep = shareIsZero ? "1" : "0.01";
     html += `<label class="edit-claim-label"><input type="checkbox" id="edit-shared" ${e.shared?'checked':''}> Shared</label>`;
     html += `<div id="shared-fields" style="${e.shared?'':'display:none;'}">`;
     html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">Split ÷</label><select class="edit-select" id="edit-split-count" style="width:60px;">`;
     for (let i = 2; i <= 5; i++) html += `<option value="${i}" ${gs===i?'selected':''}>${i}</option>`;
     html += `</select></div>`;
-    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" step="0.01" value="${displayShare.toFixed(2)}" style="width:80px;"></div>`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" step="${shareStep}" value="${shareVal}" style="width:80px;"></div>`;
     html += `</div>`;
   }
   html += '</div>';
@@ -994,29 +1008,24 @@ function bindExpenseEvents() {
   // Shared checkbox toggle
   const sharedCheck = document.getElementById("edit-shared");
   if (sharedCheck) {
+    const recalcShare = () => {
+      const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
+      const sgdAmt = parseFloat(document.getElementById("edit-sgd")?.value) || 0;
+      const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
+      const isSgdOnly = amt === 0 && sgdAmt > 0;
+      const fullAmt = amt > 0 ? amt : sgdAmt;
+      const shareCur = isSgdOnly ? "SGD" : state.trip.currency;
+      const share = fullAmt / sc;
+      const msField = document.getElementById("edit-my-share");
+      if (msField) msField.value = ZERO_DECIMAL.has(shareCur) ? Math.round(share) : share.toFixed(2);
+    };
     sharedCheck.addEventListener("change", () => {
       const fields = document.getElementById("shared-fields");
       if (fields) fields.style.display = sharedCheck.checked ? "" : "none";
-      // Recalculate My Share when toggling shared on
-      if (sharedCheck.checked) {
-        const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
-        const sgdAmt = parseFloat(document.getElementById("edit-sgd")?.value) || 0;
-        const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
-        const fullAmt = amt > 0 ? amt : sgdAmt; // Use SGD for SGD-only entries
-        const msField = document.getElementById("edit-my-share");
-        if (msField) msField.value = (fullAmt / sc).toFixed(2);
-      }
+      if (sharedCheck.checked) recalcShare();
     });
-    // Update my share when split count changes
     const splitSelect = document.getElementById("edit-split-count");
-    if (splitSelect) splitSelect.addEventListener("change", () => {
-      const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
-      const sgdAmt = parseFloat(document.getElementById("edit-sgd")?.value) || 0;
-      const sc = parseInt(splitSelect.value) || 2;
-      const fullAmt = amt > 0 ? amt : sgdAmt;
-      const msField = document.getElementById("edit-my-share");
-      if (msField) msField.value = (fullAmt / sc).toFixed(2);
-    });
+    if (splitSelect) splitSelect.addEventListener("change", recalcShare);
   }
   const exportExcel = document.getElementById("export-excel");
   if (exportExcel) exportExcel.addEventListener("click", async () => {
@@ -1713,6 +1722,21 @@ function renderCards() {
     h += '</div>';
   }
 
+  // Cash exchange rate converter (only if trip currency isn't SGD)
+  if (state.trip && state.trip.currency !== "SGD") {
+    const cur = state.trip.currency;
+    const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
+    h += '<div class="backup-section"><h3 class="section-title">Cash → SGD</h3>';
+    h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${cur} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    h += `<div class="edit-row"><label style="font-size:12px;width:110px;">${cur} received</label><input class="edit-input" id="cash-foreign" type="number" step="0.01" placeholder="e.g. 500000" style="flex:1;"></div>`;
+    h += `<div class="edit-row"><label style="font-size:12px;width:110px;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" step="0.01" placeholder="e.g. 540" style="flex:1;"></div>`;
+    h += '</div>';
+    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:10px;">Apply to ${cashEntries.length} Cash Entries</button>`;
+    h += '<div id="cash-rate-msg" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>';
+    h += '</div>';
+  }
+
   // Sync settings
   h += '<div class="backup-section"><h3 class="section-title">Sync Settings</h3>';
   h += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
@@ -1739,7 +1763,7 @@ function renderCards() {
 
   // Bind
   document.querySelectorAll("[data-remove-card]").forEach(el => {
-    el.addEventListener("click", () => { state.cards = state.cards.filter(c=>c.id!==el.dataset.removeCard); persist(); render(); });
+    el.addEventListener("click", () => { const cid = el.dataset.removeCard; state.cards = state.cards.filter(c=>c.id!==cid); if (!state.deletedCardIds.includes(cid)) state.deletedCardIds.push(cid); persist(); render(); });
   });
   document.getElementById("add-card")?.addEventListener("click", () => {
     const n = document.getElementById("new-card-name").value.trim();
@@ -1747,6 +1771,34 @@ function renderCards() {
     if (n && s) { state.cards.push({ id:genId(), name:n, shortcut:s }); persist(); render(); }
   });
   document.getElementById("save-cards")?.addEventListener("click", () => { persist(); const st = document.getElementById("backup-status"); if(st) { st.textContent="Cards saved!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2000); } });
+
+  // Cash → SGD rate converter
+  document.getElementById("apply-cash-rate")?.addEventListener("click", () => {
+    const foreign = parseFloat(document.getElementById("cash-foreign")?.value);
+    const sgd = parseFloat(document.getElementById("cash-sgd")?.value);
+    const msg = document.getElementById("cash-rate-msg");
+    if (!foreign || !sgd || foreign <= 0 || sgd <= 0) {
+      if (msg) { msg.textContent = "Enter valid amounts for both fields."; msg.style.color = "#cc4444"; }
+      return;
+    }
+    const rate = sgd / foreign; // SGD per unit foreign
+    const cur = state.trip.currency;
+    const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
+    if (cashEntries.length === 0) {
+      if (msg) { msg.textContent = "No cash entries to convert."; msg.style.color = "#cc4444"; }
+      return;
+    }
+    const rateLabel = (foreign / sgd).toFixed(2);
+    if (!confirm(`Apply rate 1 SGD = ${rateLabel} ${cur} to ${cashEntries.length} cash entries?\n\nThis overwrites any existing SGD on those entries.`)) return;
+    cashEntries.forEach(e => {
+      const idx = state.expenses.findIndex(x => x.id === e.id);
+      if (idx >= 0) {
+        state.expenses[idx].sgdAmount = Math.round(e.amount * rate * 100) / 100;
+        state.expenses[idx].updatedAt = Date.now();
+      }
+    });
+    persist(); render();
+  });
   document.getElementById("copy-backup")?.addEventListener("click", () => {
     const data = JSON.stringify({ trip:state.trip, expenses:state.expenses, cards:state.cards, pastTrips:state.pastTrips, version:1, exportedAt:Date.now() });
     navigator.clipboard.writeText(data).then(() => {
@@ -2132,6 +2184,7 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   localStorage.removeItem("tengtrip-trip");
   localStorage.removeItem("tengtrip-expenses");
   localStorage.removeItem("tengtrip-cards");
+  localStorage.removeItem("tengtrip-deleted-card-ids");
   localStorage.removeItem("tengtrip-past-trips");
   localStorage.removeItem("tengtrip-last-sync-at");
   // Reset state
@@ -2139,6 +2192,7 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   state.trip = null;
   state.expenses = [];
   state.cards = DEFAULT_CARDS;
+  state.deletedCardIds = [];
   state.pastTrips = [];
   state.lastSyncAt = null;
   state.isOffline = false;
