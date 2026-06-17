@@ -1722,17 +1722,17 @@ function renderCards() {
     h += '</div>';
   }
 
-  // Cash exchange rate converter (only if trip currency isn't SGD)
+  // Cash currency converter (only if trip currency isn't SGD)
   if (state.trip && state.trip.currency !== "SGD") {
     const cur = state.trip.currency;
     const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
-    h += '<div class="backup-section"><h3 class="section-title">Cash → SGD</h3>';
+    h += `<div class="backup-section"><h3 class="section-title">SGD → ${cur} (Cash)</h3>`;
     h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${cur} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
-    h += '<div style="display:flex;flex-direction:column;gap:8px;">';
-    h += `<div class="edit-row"><label style="font-size:12px;width:110px;">${cur} received</label><input class="edit-input" id="cash-foreign" type="number" step="0.01" placeholder="e.g. 500000" style="flex:1;"></div>`;
-    h += `<div class="edit-row"><label style="font-size:12px;width:110px;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" step="0.01" placeholder="e.g. 540" style="flex:1;"></div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:12px;">';
+    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">${cur} received</label><input class="edit-input" id="cash-foreign" type="number" step="0.01" placeholder="e.g. 500000" style="flex:1;min-width:0;"></div>`;
+    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" step="0.01" placeholder="e.g. 540" style="flex:1;min-width:0;"></div>`;
     h += '</div>';
-    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:10px;">Apply to ${cashEntries.length} Cash Entries</button>`;
+    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${cashEntries.length} Cash Entries</button>`;
     h += '<div id="cash-rate-msg" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>';
     h += '</div>';
   }
