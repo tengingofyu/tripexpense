@@ -445,7 +445,16 @@ async function manualSync() {
       (cloud.cards || []).forEach(c => { mergedCardMap[c.id] = c; });
       state.cards = Object.values(mergedCardMap);
 
-      if (!state.trip && cloud.trip) state.trip = cloud.trip;
+      // Trip: cloud always wins (represents latest synced state)
+      if (cloud.trip) {
+        if (state.trip && state.trip.id !== cloud.trip.id) {
+          // Local has a different trip — it's outdated, move to past if not already there
+          if (!state.pastTrips.some(pt => pt.id === state.trip.id)) {
+            state.pastTrips.push({ ...state.trip, expenses: [], endedAt: Date.now() });
+          }
+        }
+        state.trip = cloud.trip;
+      }
     }
 
     // Save merged data locally and push to cloud
@@ -1069,7 +1078,7 @@ function undoDelete(id) {
 async function generateExcel() {
   const t = state.trip;
   const c = t.currency;
-  const exps = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || (a.sortOrder||0) - (b.sortOrder||0));
+  const exps = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0));
   const isWork = t.type === "work";
   const isGroup = isGroupTrip(t);
   const isZero = ZERO_DECIMAL.has(c);
@@ -1120,12 +1129,21 @@ async function generateExcel() {
   function addDataRow(ws, row, label, val1, val2, bold) {
     ws.getCell(`A${row}`).value = label;
     ws.getCell(`A${row}`).font = bold ? boldFont : regFont;
-    ws.getCell(`B${row}`).value = val1;
+    if (val1 != null) {
+      ws.getCell(`B${row}`).value = val1;
+      ws.getCell(`B${row}`).numFmt = cFmt;
+    } else {
+      ws.getCell(`B${row}`).value = '-';
+    }
     ws.getCell(`B${row}`).font = bold ? boldFont : regFont;
-    ws.getCell(`B${row}`).numFmt = cFmt;
-    ws.getCell(`C${row}`).value = val2;
-    ws.getCell(`C${row}`).font = bold ? boldFont : regFont;
-    ws.getCell(`C${row}`).numFmt = sFmt;
+    if (val2 != null) {
+      ws.getCell(`C${row}`).value = val2;
+      ws.getCell(`C${row}`).numFmt = sFmt;
+    } else {
+      ws.getCell(`C${row}`).value = 'pending';
+      ws.getCell(`C${row}`).font = { size: 9, italic: true, color: { argb: 'FFCC0000' } };
+    }
+    if (val2 != null) ws.getCell(`C${row}`).font = bold ? boldFont : regFont;
     ['A','B','C'].forEach(col => { ws.getCell(`${col}${row}`).border = thinBorder; });
     return row + 1;
   }
@@ -1140,13 +1158,22 @@ async function generateExcel() {
 
   const totalF = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
   const totalSgd = exps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const pendingSgdCount = exps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
+  const sgdLabel = pendingSgdCount > 0 ? `SGD (${pendingSgdCount} pending)` : 'SGD';
+
+  // Update sub-header with pending note
+  ws1.getCell(`C${r-1}`).value = sgdLabel;
+
   if (isGroup) {
     const myShareF = exps.reduce((s,e) => s + getMyShare(e, t), 0);
     const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, t), 0);
-    r = addDataRow(ws1, r, 'My Share', myShareF, mySgdShare, true);
-    r = addDataRow(ws1, r, 'Total Paid', totalF, totalSgd, false);
+    const othersShareF = totalF - myShareF;
+    const othersSgdShare = totalSgd - mySgdShare;
+    r = addDataRow(ws1, r, 'My Share', myShareF, pendingSgdCount ? null : mySgdShare, true);
+    r = addDataRow(ws1, r, "Others' Share", othersShareF, pendingSgdCount ? null : othersSgdShare, false);
+    r = addDataRow(ws1, r, 'Total Paid', totalF, pendingSgdCount ? null : totalSgd, false);
   } else {
-    r = addDataRow(ws1, r, 'Total', totalF, totalSgd, true);
+    r = addDataRow(ws1, r, 'Total', totalF, pendingSgdCount ? null : totalSgd, true);
   }
   if (isWork) {
     const claimable = exps.filter(e => e.claimable);
@@ -1159,7 +1186,7 @@ async function generateExcel() {
 
   // Category breakdown
   r = addSectionHeader(ws1, r, 'By Category');
-  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = 'SGD';
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = pendingSgdCount ? sgdLabel : 'SGD';
   ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
   ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
   ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
@@ -1169,14 +1196,14 @@ async function generateExcel() {
   const byCatSgd = {};
   exps.forEach(e => { const n = e.category||"Others"; byCatSgd[n] = (byCatSgd[n]||0) + (e.sgdAmount||0); });
   Object.entries(byCat).sort((a,b) => b[1]-a[1]).forEach(([n,a], i) => {
-    r = addDataRow(ws1, r, n, a, byCatSgd[n]||0, false);
+    r = addDataRow(ws1, r, n, a, pendingSgdCount ? null : (byCatSgd[n]||0), false);
     if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
   });
   r++;
 
   // Card breakdown
   r = addSectionHeader(ws1, r, 'By Card');
-  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = 'SGD';
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = pendingSgdCount ? sgdLabel : 'SGD';
   ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
   ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
   ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
@@ -1186,7 +1213,7 @@ async function generateExcel() {
   const byCardSgd = {};
   exps.forEach(e => { const n = e.cardName||"Unknown"; byCardSgd[n] = (byCardSgd[n]||0) + (e.sgdAmount||0); });
   Object.entries(byCard).sort((a,b) => b[1]-a[1]).forEach(([n,a], i) => {
-    r = addDataRow(ws1, r, n, a, byCardSgd[n]||0, false);
+    r = addDataRow(ws1, r, n, a, pendingSgdCount ? null : (byCardSgd[n]||0), false);
     if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
   });
   r++;
@@ -1200,7 +1227,7 @@ async function generateExcel() {
   ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
   ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
   r++;
-  const allDates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+  const allDates = [...new Set(exps.map(e => e.date))].sort((a,b) => a.localeCompare(b));
   allDates.forEach((date, i) => {
     const dayExps = exps.filter(e => e.date === date);
     const dayF = dayExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
@@ -1295,10 +1322,17 @@ async function generateExcel() {
     ws3.getCell(`B${sr}`).value = othersOwe;
     ws3.getCell(`B${sr}`).numFmt = cFmt;
     ws3.getCell(`B${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
-    ws3.getCell(`C${sr}`).value = 'SGD';
-    ws3.getCell(`D${sr}`).value = othersOweSgd;
-    ws3.getCell(`D${sr}`).numFmt = sFmt;
-    ws3.getCell(`D${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
+    const sharedPendingSgd = sharedExps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
+    if (sharedPendingSgd === 0) {
+      ws3.getCell(`C${sr}`).value = 'SGD';
+      ws3.getCell(`D${sr}`).value = othersOweSgd;
+      ws3.getCell(`D${sr}`).numFmt = sFmt;
+      ws3.getCell(`D${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
+    } else {
+      ws3.getCell(`C${sr}`).value = `SGD (${sharedPendingSgd} pending)`;
+      ws3.getCell(`C${sr}`).font = { size: 9, italic: true, color: { argb: 'FFCC0000' } };
+      ws3.mergeCells(`C${sr}:D${sr}`);
+    }
     sr += 2;
 
     const settleHeaders = ['Date', 'Description', 'Total', 'Split'];
@@ -1310,7 +1344,7 @@ async function generateExcel() {
       cell.border = thinBorder;
     });
 
-    sharedExps.sort((a,b) => b.date.localeCompare(a.date)).forEach((e, i) => {
+    sharedExps.sort((a,b) => a.date.localeCompare(b.date)).forEach((e, i) => {
       const gs = e.splitCount || getGroupSize(t);
       const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
       const isCustom = e.myShare != null;
@@ -1352,13 +1386,26 @@ async function generateExcel() {
     });
   }
 
-  // Generate and download
+  // Generate and share/download
   const buf = await wb.xlsx.writeBuffer();
+  const filename = (t.name || 'TripExpense').replace(/[^a-zA-Z0-9 ]/g, '') + '.xlsx';
+  const file = new File([buf], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+  // Try native share sheet first (iOS Safari)
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    } catch(e) {
+      if (e.name === 'AbortError') return; // User cancelled
+    }
+  }
+  // Fallback: direct download
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = (t.name || 'TripExpense').replace(/[^a-zA-Z0-9 ]/g, '') + '.xlsx';
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
