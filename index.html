@@ -156,6 +156,14 @@ input[type="number"] { -moz-appearance: textfield; }
 .total-value { font-size: 18px; font-weight: 700; color: #fff; }
 .total-pending { font-size: 11px; color: var(--danger); margin-top: 6px; font-style: italic; }
 .total-entries { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.banner-header { display: grid; grid-template-columns: 1fr 110px 110px; padding: 0 0 8px; border-bottom: 1px solid rgba(255,255,255,0.2); margin-bottom: 8px; }
+.banner-col-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.6); text-align: right; }
+.banner-row { display: grid; grid-template-columns: 1fr 110px 110px; padding: 7px 0; align-items: baseline; }
+.banner-row-label { font-size: 17px; color: #fff; font-weight: 600; }
+.banner-row-label.dim { color: rgba(255,255,255,0.55); font-size: 15px; }
+.banner-val { font-size: 17px; font-weight: 700; color: #fff; text-align: right; }
+.banner-val.dim { color: rgba(255,255,255,0.55); font-size: 15px; }
+.banner-val.pending-cell { font-size: 11px; font-style: italic; color: #ffd0d0; }
 
 /* Dual-column breakdown */
 .breakdown-header { display: grid; grid-template-columns: 1fr 90px 90px; padding: 0 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
@@ -1536,17 +1544,23 @@ function renderDashboard() {
   let h = '<div class="dashboard">';
   const isGroup = isGroupTrip(state.trip);
 
-  // Totals - prominent
+  // Totals - prominent, two-column layout
   h += '<div class="total-banner">';
+  const sgdCell = pendingSgdCount > 0
+    ? '<span class="banner-val pending-cell">pending</span>'
+    : null;
+  // Column header
+  h += `<div class="banner-header"><span></span><span class="banner-col-label">${c}</span><span class="banner-col-label">SGD</span></div>`;
   if (isGroup) {
     const myShareF = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, state.trip), 0);
-    h += `<div class="total-row"><span class="total-label">My Share (${c})</span><span class="total-value">$${money(myShareF, c)}</span></div>`;
-    h += `<div class="total-row"><span class="total-label">My Share (SGD)</span><span class="total-value">S$${money(mySgdShare, "SGD")}</span></div>`;
-    h += `<div class="total-row" style="opacity:0.5;font-size:12px;"><span class="total-label">Total Paid (${c})</span><span class="total-value">$${money(totalF, c)}</span></div>`;
+    const othersF = totalF - myShareF;
+    const othersSgd = totalSgd - mySgdShare;
+    h += `<div class="banner-row"><span class="banner-row-label">You Spent</span><span class="banner-val">${money(myShareF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val">${money(mySgdShare, "SGD")}</span>`}</div>`;
+    h += `<div class="banner-row"><span class="banner-row-label dim">Others' Share</span><span class="banner-val dim">${money(othersF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val dim">${money(othersSgd, "SGD")}</span>`}</div>`;
+    h += `<div class="banner-row"><span class="banner-row-label dim">Total Bill</span><span class="banner-val dim">${money(totalF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val dim">${money(totalSgd, "SGD")}</span>`}</div>`;
   } else {
-    h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${money(totalF, c)}</span></div>`;
-    h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${money(totalSgd, "SGD")}</span></div>`;
+    h += `<div class="banner-row"><span class="banner-row-label">You Spent</span><span class="banner-val">${money(totalF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val">${money(totalSgd, "SGD")}</span>`}</div>`;
   }
   if (pendingSgdCount > 0) h += `<div class="total-pending">${pendingSgdCount} entries pending SGD</div>`;
   h += `<div class="total-entries">${exps.length} entries</div>`;
@@ -1556,8 +1570,8 @@ function renderDashboard() {
   if (state.trip.type === "work") {
     h += '<div class="breakdown"><div class="breakdown-title">Claimable vs Personal</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
-    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">$${money(claimF, c)}</span><span class="breakdown-val">S$${money(claimSgd, "SGD")}</span></div>`;
-    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">$${money(nonClaimF, c)}</span><span class="breakdown-val">S$${money(nonClaimSgd, "SGD")}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">${money(claimF, c)}</span><span class="breakdown-val">${money(claimSgd, "SGD")}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">${money(nonClaimF, c)}</span><span class="breakdown-val">${money(nonClaimSgd, "SGD")}</span></div>`;
     h += '</div>';
   }
 
@@ -1565,7 +1579,7 @@ function renderDashboard() {
     h += '<div class="breakdown"><div class="breakdown-title">By Card</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
     Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
-      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${money(a, c)}</span><span class="breakdown-val">S$${money(byCardSgd[n]||0, "SGD")}</span></div>`;
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">${money(a, c)}</span><span class="breakdown-val">${money(byCardSgd[n]||0, "SGD")}</span></div>`;
     });
     h += '</div>';
   }
@@ -1573,7 +1587,7 @@ function renderDashboard() {
     h += '<div class="breakdown"><div class="breakdown-title">By Category</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
     Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
-      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${money(a, c)}</span><span class="breakdown-val">S$${money(byCatSgd[n]||0, "SGD")}</span></div>`;
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">${money(a, c)}</span><span class="breakdown-val">${money(byCatSgd[n]||0, "SGD")}</span></div>`;
     });
     h += '</div>';
   }
@@ -1591,9 +1605,9 @@ function renderDashboard() {
       const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
       if (isGroup) {
         const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
-        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${money(dayMyShare, c)}</span><span class="breakdown-val" style="color:var(--text-muted);">$${money(dayF, c)}</span></div>`;
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">${money(dayMyShare, c)}</span><span class="breakdown-val" style="color:var(--text-muted);">${money(dayF, c)}</span></div>`;
       } else {
-        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${money(dayF, c)}</span><span class="breakdown-val" style="color:var(--accent);">S$${money(daySgd, "SGD")}</span></div>`;
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">${money(dayF, c)}</span><span class="breakdown-val" style="color:var(--accent);">${money(daySgd, "SGD")}</span></div>`;
       }
       // Card subtotals for this day
       const dayByCard = {}, dayByCardSgd = {};
@@ -1603,7 +1617,7 @@ function renderDashboard() {
         dayByCardSgd[n] = (dayByCardSgd[n]||0) + (e.sgdAmount || 0);
       });
       Object.entries(dayByCard).sort((a,b) => b[1]-a[1]).forEach(([n,a]) => {
-        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">$${money(a, c)}</span><span class="breakdown-val" style="font-size:11px;">S$${money(dayByCardSgd[n]||0, "SGD")}</span></div>`;
+        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">${money(a, c)}</span><span class="breakdown-val" style="font-size:11px;">${money(dayByCardSgd[n]||0, "SGD")}</span></div>`;
       });
     });
     h += '</div>';
@@ -1625,9 +1639,11 @@ function renderDashboard() {
     if (sharedExps.length === 0) {
       h += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No shared expenses yet.</div>';
     } else {
+      const sharedPendingSgd = sharedExps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
       h += `<div class="total-banner" style="margin-bottom:12px;">`;
-      h += `<div class="total-row"><span class="total-label">Others owe you (${c})</span><span class="total-value" style="color:#4ecdc4;">$${money(othersOwe, c)}</span></div>`;
-      h += `<div class="total-row"><span class="total-label">Others owe you (SGD)</span><span class="total-value" style="color:#4ecdc4;">S$${money(othersOweSgd, "SGD")}</span></div>`;
+      h += `<div class="banner-header"><span></span><span class="banner-col-label">${c}</span><span class="banner-col-label">SGD</span></div>`;
+      h += `<div class="banner-row"><span class="banner-row-label" style="color:#4ecdc4;">Others Owe You</span><span class="banner-val" style="color:#4ecdc4;">${money(othersOwe, c)}</span>${sharedPendingSgd > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val" style="color:#4ecdc4;">${money(othersOweSgd, "SGD")}</span>`}</div>`;
+      if (sharedPendingSgd > 0) h += `<div class="total-pending">${sharedPendingSgd} shared entries pending SGD</div>`;
       h += `</div>`;
       // Line items
       const sharedDates = [...new Set(sharedExps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
