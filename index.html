@@ -404,6 +404,29 @@ function loadState() {
   state.pastTrips = loadLocal("past-trips", []);
   state.syncMode = loadLocal("sync-mode", "auto");
   state.lastSyncAt = loadLocal("last-sync-at", null);
+  cleanMisplacedExpenses();
+}
+
+// Move expenses whose currency doesn't match the active trip to the correct past trip
+function cleanMisplacedExpenses() {
+  if (!state.trip || state.expenses.length === 0) return;
+  const tripCur = state.trip.currency;
+  const misplaced = state.expenses.filter(e => e.currency && e.currency !== tripCur && e.currency !== "SGD" && !isSgdOnlyEntry(e));
+  if (misplaced.length === 0) return;
+  console.log(`Data integrity: moving ${misplaced.length} misplaced expenses to past trips`);
+  const byCur = {};
+  misplaced.forEach(e => { (byCur[e.currency] = byCur[e.currency] || []).push(e); });
+  Object.entries(byCur).forEach(([cur, exps]) => {
+    const pt = state.pastTrips.find(p => p.currency === cur);
+    if (pt) {
+      const merged = {};
+      (pt.expenses || []).forEach(e => { merged[e.id] = e; });
+      exps.forEach(e => { merged[e.id] = e; });
+      pt.expenses = Object.values(merged);
+    }
+  });
+  const misplacedIds = new Set(misplaced.map(e => e.id));
+  state.expenses = state.expenses.filter(e => !misplacedIds.has(e.id));
 }
 
 function persist() {
@@ -509,6 +532,9 @@ async function manualSync() {
         }
       }
     }
+
+    // ─── Data integrity: remove misplaced expenses ───
+    cleanMisplacedExpenses();
 
     // Save merged data locally and push to cloud
     saveLocal("trip", state.trip);
