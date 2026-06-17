@@ -468,6 +468,11 @@ async function manualSync() {
 // ─── Helpers ───────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+const ZERO_DECIMAL = new Set(["JPY","KRW","VND","IDR","CLP","PYG","UGX","RWF","KMF","XOF","XAF","GNF","BIF","DJF","MGA","MMK","LAK","KHR"]);
+function money(n, cur) {
+  if (ZERO_DECIMAL.has(cur)) return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 function todayStr() { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function formatDate(ds) {
   const [y,m,d] = ds.split("-").map(Number);
@@ -656,7 +661,7 @@ function renderExpenses() {
     if (state.pendingExpense) {
       const pe = state.pendingExpense;
       html += '<div class="claim-prompt">';
-      const peAmtText = isSgdOnlyEntry(pe) ? `SGD ${(pe.sgdAmount||0).toFixed(2)}` : `${c} ${pe.amount.toFixed(2)}`;
+      const peAmtText = isSgdOnlyEntry(pe) ? `SGD ${money(pe.sgdAmount||0, "SGD")}` : `${c} ${money(pe.amount, c)}`;
       if (state.pendingType === "claimable") {
         html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
         html += '<div class="claim-buttons">';
@@ -682,8 +687,8 @@ function renderExpenses() {
     for (const [date, exps] of Object.entries(grouped)) {
       const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
       const daySgdOnly = exps.filter(e=>!state.deletedIds[e.id] && isSgdOnlyEntry(e)).reduce((s,e) => s + (e.sgdAmount||0), 0);
-      let dayTotalText = `${c} ${dayTotal.toFixed(2)}`;
-      if (daySgdOnly > 0) dayTotalText += ` + SGD ${daySgdOnly.toFixed(2)}`;
+      let dayTotalText = `${c} ${money(dayTotal, c)}`;
+      if (daySgdOnly > 0) dayTotalText += ` + SGD ${money(daySgdOnly, "SGD")}`;
       html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${dayTotalText}</span></div>`;
       for (const e of exps) {
         if (state.deletedIds[e.id]) {
@@ -712,11 +717,11 @@ function renderExpenses() {
         html += '</div></div>';
         html += '<div class="expense-right">';
         if (isSgdOnlyEntry(e)) {
-          html += `<span class="expense-amount">SGD ${(e.sgdAmount||0).toFixed(2)}</span>`;
+          html += `<span class="expense-amount">SGD ${money(e.sgdAmount||0, "SGD")}</span>`;
         } else {
-          html += `<span class="expense-amount">${c} ${e.amount.toFixed(2)}</span>`;
+          html += `<span class="expense-amount">${c} ${money(e.amount, c)}</span>`;
           if (e.sgdAmount) {
-            html += `<span class="expense-sgd">SGD ${e.sgdAmount.toFixed(2)}</span>`;
+            html += `<span class="expense-sgd">SGD ${money(e.sgdAmount, "SGD")}</span>`;
           } else {
             html += `<span class="expense-sgd sgd-pending">SGD pending</span>`;
           }
@@ -952,11 +957,11 @@ function updatePreview(val) {
   let h = '';
   if (p.parsedDate) h += `<span class="preview-date">${formatDate(p.parsedDate)}</span>`;
   if (p.isSgdOnly) {
-    h += `<span class="preview-amount">SGD ${p.sgdAmount.toFixed(2)}</span>`;
+    h += `<span class="preview-amount">SGD ${money(p.sgdAmount, "SGD")}</span>`;
   } else {
-    h += `<span class="preview-amount">${c} ${p.amount.toFixed(2)}</span>`;
+    h += `<span class="preview-amount">${c} ${money(p.amount, c)}</span>`;
     if (p.sgdAmount) {
-      h += `<span class="preview-sgd">SGD ${p.sgdAmount.toFixed(2)}</span>`;
+      h += `<span class="preview-sgd">SGD ${money(p.sgdAmount, "SGD")}</span>`;
       h += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
     }
   }
@@ -979,8 +984,8 @@ function updatePreview(val) {
       const lp = state.lastPreview;
       let h2 = '';
       if (lp.parsedDate) h2 += `<span class="preview-date">${formatDate(lp.parsedDate)}</span>`;
-      h2 += `<span class="preview-amount">${c} ${lp.amount.toFixed(2)}</span>`;
-      h2 += `<span class="preview-sgd">SGD ${lp.sgdAmount.toFixed(2)}</span>`;
+      h2 += `<span class="preview-amount">${c} ${money(lp.amount, c)}</span>`;
+      h2 += `<span class="preview-sgd">SGD ${money(lp.sgdAmount, "SGD")}</span>`;
       h2 += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
       if (lp.card) h2 += `<span class="preview-card">${esc(lp.card.name)}</span>`;
       h2 += `<span class="preview-cat">${lp.category}</span>`;
@@ -1123,12 +1128,12 @@ function renderDashboard() {
   if (isGroup) {
     const myShareF = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, state.trip), 0);
-    h += `<div class="total-row"><span class="total-label">My Share (${c})</span><span class="total-value">$${fmt(myShareF)}</span></div>`;
-    h += `<div class="total-row"><span class="total-label">My Share (SGD)</span><span class="total-value">S$${fmt(mySgdShare)}</span></div>`;
-    h += `<div class="total-row" style="opacity:0.5;font-size:12px;"><span class="total-label">Total Paid (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">My Share (${c})</span><span class="total-value">$${money(myShareF, c)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">My Share (SGD)</span><span class="total-value">S$${money(mySgdShare, "SGD")}</span></div>`;
+    h += `<div class="total-row" style="opacity:0.5;font-size:12px;"><span class="total-label">Total Paid (${c})</span><span class="total-value">$${money(totalF, c)}</span></div>`;
   } else {
-    h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${fmt(totalF)}</span></div>`;
-    h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${fmt(totalSgd)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">Total (${c})</span><span class="total-value">$${money(totalF, c)}</span></div>`;
+    h += `<div class="total-row"><span class="total-label">Total (SGD)</span><span class="total-value">S$${money(totalSgd, "SGD")}</span></div>`;
   }
   if (pendingSgdCount > 0) h += `<div class="total-pending">${pendingSgdCount} entries pending SGD</div>`;
   h += `<div class="total-entries">${exps.length} entries</div>`;
@@ -1138,8 +1143,8 @@ function renderDashboard() {
   if (state.trip.type === "work") {
     h += '<div class="breakdown"><div class="breakdown-title">Claimable vs Personal</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
-    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">$${fmt(claimF)}</span><span class="breakdown-val">S$${fmt(claimSgd)}</span></div>`;
-    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">$${fmt(nonClaimF)}</span><span class="breakdown-val">S$${fmt(nonClaimSgd)}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">$${money(claimF, c)}</span><span class="breakdown-val">S$${money(claimSgd, "SGD")}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">$${money(nonClaimF, c)}</span><span class="breakdown-val">S$${money(nonClaimSgd, "SGD")}</span></div>`;
     h += '</div>';
   }
 
@@ -1147,7 +1152,7 @@ function renderDashboard() {
     h += '<div class="breakdown"><div class="breakdown-title">By Card</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
     Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
-      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${fmt(a)}</span><span class="breakdown-val">S$${fmt(byCardSgd[n]||0)}</span></div>`;
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${money(a, c)}</span><span class="breakdown-val">S$${money(byCardSgd[n]||0, "SGD")}</span></div>`;
     });
     h += '</div>';
   }
@@ -1155,7 +1160,7 @@ function renderDashboard() {
     h += '<div class="breakdown"><div class="breakdown-title">By Category</div>';
     h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
     Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
-      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${fmt(a)}</span><span class="breakdown-val">S$${fmt(byCatSgd[n]||0)}</span></div>`;
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">$${money(a, c)}</span><span class="breakdown-val">S$${money(byCatSgd[n]||0, "SGD")}</span></div>`;
     });
     h += '</div>';
   }
@@ -1173,9 +1178,9 @@ function renderDashboard() {
       const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
       if (isGroup) {
         const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
-        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayMyShare)}</span><span class="breakdown-val" style="color:var(--text-muted);">$${fmt(dayF)}</span></div>`;
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${money(dayMyShare, c)}</span><span class="breakdown-val" style="color:var(--text-muted);">$${money(dayF, c)}</span></div>`;
       } else {
-        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${fmt(dayF)}</span><span class="breakdown-val" style="color:var(--accent);">S$${fmt(daySgd)}</span></div>`;
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">$${money(dayF, c)}</span><span class="breakdown-val" style="color:var(--accent);">S$${money(daySgd, "SGD")}</span></div>`;
       }
       // Card subtotals for this day
       const dayByCard = {}, dayByCardSgd = {};
@@ -1185,7 +1190,7 @@ function renderDashboard() {
         dayByCardSgd[n] = (dayByCardSgd[n]||0) + (e.sgdAmount || 0);
       });
       Object.entries(dayByCard).sort((a,b) => b[1]-a[1]).forEach(([n,a]) => {
-        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">$${fmt(a)}</span><span class="breakdown-val" style="font-size:11px;">S$${fmt(dayByCardSgd[n]||0)}</span></div>`;
+        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">$${money(a, c)}</span><span class="breakdown-val" style="font-size:11px;">S$${money(dayByCardSgd[n]||0, "SGD")}</span></div>`;
       });
     });
     h += '</div>';
@@ -1208,8 +1213,8 @@ function renderDashboard() {
       h += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No shared expenses yet.</div>';
     } else {
       h += `<div class="total-banner" style="margin-bottom:12px;">`;
-      h += `<div class="total-row"><span class="total-label">Others owe you (${c})</span><span class="total-value" style="color:#4ecdc4;">$${fmt(othersOwe)}</span></div>`;
-      h += `<div class="total-row"><span class="total-label">Others owe you (SGD)</span><span class="total-value" style="color:#4ecdc4;">S$${fmt(othersOweSgd)}</span></div>`;
+      h += `<div class="total-row"><span class="total-label">Others owe you (${c})</span><span class="total-value" style="color:#4ecdc4;">$${money(othersOwe, c)}</span></div>`;
+      h += `<div class="total-row"><span class="total-label">Others owe you (SGD)</span><span class="total-value" style="color:#4ecdc4;">S$${money(othersOweSgd, "SGD")}</span></div>`;
       h += `</div>`;
       // Line items
       const sharedDates = [...new Set(sharedExps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
@@ -1224,11 +1229,11 @@ function renderDashboard() {
           const isCustom = e.myShare != null;
           const prefix = isSgdOnlyEntry(e) ? "S$" : "$";
           h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="font-size:11px;">${esc(e.description)}</span>`;
-          h += `<span class="breakdown-val" style="font-size:11px;">${prefix}${fmt(dispAmt)}</span>`;
+          h += `<span class="breakdown-val" style="font-size:11px;">${prefix}${money(dispAmt, isSgdOnlyEntry(e) ? "SGD" : c)}</span>`;
           if (isCustom) {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: ${prefix}${fmt(myShare)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: ${prefix}${money(myShare, isSgdOnlyEntry(e) ? "SGD" : c)}</span>`;
           } else {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = ${prefix}${fmt(eachShare)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = ${prefix}${money(eachShare, isSgdOnlyEntry(e) ? "SGD" : c)}</span>`;
           }
           h += `</div>`;
         });
@@ -1257,9 +1262,9 @@ function renderDashboard() {
         const dispCur = isSgdOnlyEntry(e) ? "SGD" : c;
         const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
         if (isCustom) {
-          text += `  ${e.description}: ${dispCur} ${dispAmt.toFixed(2)} (My share: ${myShare.toFixed(2)}, Others: ${(dispAmt - myShare).toFixed(2)})\n`;
+          text += `  ${e.description}: ${dispCur} ${money(dispAmt, dispCur)} (My share: ${money(myShare, dispCur)}, Others: ${money(dispAmt - myShare, dispCur)})\n`;
         } else {
-          text += `  ${e.description}: ${dispCur} ${dispAmt.toFixed(2)} ÷${splitN} = ${(dispAmt/splitN).toFixed(2)} each\n`;
+          text += `  ${e.description}: ${dispCur} ${money(dispAmt, dispCur)} ÷${splitN} = ${money(dispAmt/splitN, dispCur)} each\n`;
         }
       });
       text += '\n';
@@ -1268,8 +1273,8 @@ function renderDashboard() {
     const totalMyShare = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
     const othersOwe = totalPaid - totalMyShare;
     const othersOweSgd = exps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, state.trip) + s, 0);
-    text += `Total shared: ${c} ${totalPaid.toFixed(2)}\n`;
-    text += `Others owe: ${c} ${othersOwe.toFixed(2)} (SGD ${othersOweSgd.toFixed(2)})\n`;
+    text += `Total shared: ${c} ${money(totalPaid, c)}\n`;
+    text += `Others owe: ${c} ${money(othersOwe, c)} (SGD ${money(othersOweSgd, "SGD")})\n`;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById("copy-settlement");
       if (btn) { btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = "Copy Settlement"; }, 2000); }
