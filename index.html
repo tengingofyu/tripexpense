@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
@@ -280,6 +280,7 @@ input[type="number"] { -moz-appearance: textfield; }
   <div id="view-setup" class="hidden"></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 // ─── Data ──────────────────────────────────────────────
 const DEFAULT_CARDS = [
@@ -323,7 +324,7 @@ let state = {
   pendingType: null,
   deletedIds: {},
   editingId: null,
-  showCsv: false,
+  
   showRestore: false,
   isDragging: false,
   isSwiping: false,
@@ -599,7 +600,7 @@ function render() {
       btn.textContent = label;
       btn.dataset.view = v;
       if (v === state.currentView) btn.classList.add("active");
-      btn.addEventListener("click", () => { state.currentView = v; state.editingId = null; state.showCsv = false; render(); });
+      btn.addEventListener("click", () => { state.currentView = v; state.editingId = null;  render(); });
       navEl.appendChild(btn);
     });
   } else {
@@ -740,18 +741,11 @@ function renderExpenses() {
   // Bottom actions
   if (state.expenses.length > 0) {
     html += '<div class="bottom-actions">';
-    html += '<button class="export-btn" id="toggle-csv">Export CSV</button>';
+    html += '<button class="export-btn" id="export-excel">Export Excel</button>';
     if (!state.isHistorical) {
       html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
     }
     html += '</div>';
-    if (state.showCsv) {
-      const csv = generateCsv();
-      html += '<div class="csv-area">';
-      html += `<textarea class="csv-textarea" readonly id="csv-text">${esc(csv)}</textarea>`;
-      html += '<button class="copy-csv-btn" id="copy-csv">Copy to Clipboard</button>';
-      html += '</div>';
-    }
   }
 
   document.getElementById("view-expenses").innerHTML = html;
@@ -930,19 +924,18 @@ function bindExpenseEvents() {
       if (msField) msField.value = (fullAmt / sc).toFixed(2);
     });
   }
-  const toggleCsv = document.getElementById("toggle-csv");
-  if (toggleCsv) toggleCsv.addEventListener("click", () => { state.showCsv = !state.showCsv; render(); });
-  const copyCsv = document.getElementById("copy-csv");
-  if (copyCsv) copyCsv.addEventListener("click", () => {
-    const ta = document.getElementById("csv-text");
-    navigator.clipboard.writeText(ta.value).then(() => { copyCsv.textContent = "Copied!"; setTimeout(() => { copyCsv.textContent = "Copy to Clipboard"; }, 2000); }).catch(() => { ta.select(); });
+  const exportExcel = document.getElementById("export-excel");
+  if (exportExcel) exportExcel.addEventListener("click", async () => {
+    exportExcel.textContent = "Generating...";
+    try { await generateExcel(); } catch(e) { console.error("Excel error:", e); }
+    exportExcel.textContent = "Export Excel";
   });
   const endTrip = document.getElementById("end-trip");
   if (endTrip) endTrip.addEventListener("click", () => {
     if (state.trip) {
       state.pastTrips.push({ ...state.trip, expenses: state.expenses, endedAt: Date.now() });
     }
-    state.trip = null; state.expenses = []; state.showCsv = false;
+    state.trip = null; state.expenses = []; 
     persist(); state.currentView = "history"; render();
   });
 }
@@ -1073,24 +1066,303 @@ function undoDelete(id) {
   delete state.deletedIds[id]; render();
 }
 
-function generateCsv() {
-  const isWork = state.trip && state.trip.type === "work";
-  const isGroup = isGroupTrip(state.trip);
-  const h = ["Date","Description","Amount","Currency","SGD Amount","Card","Category"];
-  if (isWork) h.push("Claimable");
-  if (isGroup) h.push("Shared","My Share","My Share SGD");
-  const rows = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0))
-    .map(e => {
-      const row = [e.date, '"'+(e.description||"").replace(/"/g,'""')+'"', isSgdOnlyEntry(e) ? "" : e.amount.toFixed(2), isSgdOnlyEntry(e) ? "SGD" : e.currency, e.sgdAmount ? e.sgdAmount.toFixed(2):"", e.cardName||"", e.category||""];
-      if (isWork) row.push(e.claimable?"Yes":"No");
-      if (isGroup) {
-        row.push(e.shared?"Yes":"No");
-        row.push(getMyShare(e, state.trip).toFixed(2));
-        row.push(getMySgdShare(e, state.trip).toFixed(2));
-      }
-      return row.join(",");
+async function generateExcel() {
+  const t = state.trip;
+  const c = t.currency;
+  const exps = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || (a.sortOrder||0) - (b.sortOrder||0));
+  const isWork = t.type === "work";
+  const isGroup = isGroupTrip(t);
+  const isZero = ZERO_DECIMAL.has(c);
+  const cFmt = isZero ? '#,##0' : '#,##0.00';
+  const sFmt = '#,##0.00';
+
+  const wb = new ExcelJS.Workbook();
+  const hdrFont = { bold: true, size: 14, color: { argb: 'FF2563EB' } };
+  const secFont = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+  const secFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+  const hdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+  const altFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FF' } };
+  const sumFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+  const thinBorder = { top:{style:'thin',color:{argb:'FFD0D0D0'}}, bottom:{style:'thin',color:{argb:'FFD0D0D0'}}, left:{style:'thin',color:{argb:'FFD0D0D0'}}, right:{style:'thin',color:{argb:'FFD0D0D0'}} };
+  const boldFont = { bold: true, size: 10 };
+  const regFont = { size: 10 };
+
+  // ─── Sheet 1: Summary ───
+  const ws1 = wb.addWorksheet('Summary');
+  ws1.columns = [{ width: 22 }, { width: 18 }, { width: 18 }];
+
+  // Trip header
+  let r = 1;
+  ws1.getCell(`A${r}`).value = t.name;
+  ws1.getCell(`A${r}`).font = hdrFont;
+  ws1.mergeCells(`A${r}:C${r}`);
+  r++;
+  const meta = [c, t.type === 'work' ? 'Work' : 'Personal'];
+  if (isGroup) meta.push('Group: ' + getGroupSize(t));
+  ws1.getCell(`A${r}`).value = meta.join(' · ');
+  ws1.getCell(`A${r}`).font = { size: 10, color: { argb: 'FF666666' } };
+  ws1.mergeCells(`A${r}:C${r}`);
+  r++;
+  const dates = [...new Set(exps.map(e => e.date))].sort();
+  if (dates.length) {
+    ws1.getCell(`A${r}`).value = formatDate(dates[0]) + ' – ' + formatDate(dates[dates.length-1]);
+    ws1.getCell(`A${r}`).font = { size: 10, color: { argb: 'FF666666' } };
+  }
+  r += 2;
+
+  // Totals section
+  function addSectionHeader(ws, row, label) {
+    ws.getCell(`A${row}`).value = label;
+    ws.getCell(`A${row}`).font = secFont;
+    ['A','B','C'].forEach(col => { ws.getCell(`${col}${row}`).fill = secFill; ws.getCell(`${col}${row}`).border = thinBorder; });
+    return row + 1;
+  }
+  function addDataRow(ws, row, label, val1, val2, bold) {
+    ws.getCell(`A${row}`).value = label;
+    ws.getCell(`A${row}`).font = bold ? boldFont : regFont;
+    ws.getCell(`B${row}`).value = val1;
+    ws.getCell(`B${row}`).font = bold ? boldFont : regFont;
+    ws.getCell(`B${row}`).numFmt = cFmt;
+    ws.getCell(`C${row}`).value = val2;
+    ws.getCell(`C${row}`).font = bold ? boldFont : regFont;
+    ws.getCell(`C${row}`).numFmt = sFmt;
+    ['A','B','C'].forEach(col => { ws.getCell(`${col}${row}`).border = thinBorder; });
+    return row + 1;
+  }
+
+  r = addSectionHeader(ws1, r, 'Totals');
+  // Sub-header
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = 'SGD';
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+
+  const totalF = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+  const totalSgd = exps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  if (isGroup) {
+    const myShareF = exps.reduce((s,e) => s + getMyShare(e, t), 0);
+    const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, t), 0);
+    r = addDataRow(ws1, r, 'My Share', myShareF, mySgdShare, true);
+    r = addDataRow(ws1, r, 'Total Paid', totalF, totalSgd, false);
+  } else {
+    r = addDataRow(ws1, r, 'Total', totalF, totalSgd, true);
+  }
+  if (isWork) {
+    const claimable = exps.filter(e => e.claimable);
+    const claimF = claimable.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const claimSgd = claimable.reduce((s,e) => s + (e.sgdAmount||0), 0);
+    r = addDataRow(ws1, r, 'Claimable', claimF, claimSgd, false);
+    r = addDataRow(ws1, r, 'Personal', totalF - claimF, totalSgd - claimSgd, false);
+  }
+  r++;
+
+  // Category breakdown
+  r = addSectionHeader(ws1, r, 'By Category');
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = 'SGD';
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+  const byCat = {};
+  exps.forEach(e => { const n = e.category||"Others"; byCat[n] = (byCat[n]||0) + (isSgdOnlyEntry(e) ? 0 : e.amount); });
+  const byCatSgd = {};
+  exps.forEach(e => { const n = e.category||"Others"; byCatSgd[n] = (byCatSgd[n]||0) + (e.sgdAmount||0); });
+  Object.entries(byCat).sort((a,b) => b[1]-a[1]).forEach(([n,a], i) => {
+    r = addDataRow(ws1, r, n, a, byCatSgd[n]||0, false);
+    if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
+  });
+  r++;
+
+  // Card breakdown
+  r = addSectionHeader(ws1, r, 'By Card');
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = 'SGD';
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+  const byCard = {};
+  exps.forEach(e => { const n = e.cardName||"Unknown"; byCard[n] = (byCard[n]||0) + (isSgdOnlyEntry(e) ? 0 : e.amount); });
+  const byCardSgd = {};
+  exps.forEach(e => { const n = e.cardName||"Unknown"; byCardSgd[n] = (byCardSgd[n]||0) + (e.sgdAmount||0); });
+  Object.entries(byCard).sort((a,b) => b[1]-a[1]).forEach(([n,a], i) => {
+    r = addDataRow(ws1, r, n, a, byCardSgd[n]||0, false);
+    if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
+  });
+  r++;
+
+  // Daily breakdown
+  const col2Label = isGroup ? 'My Share' : c;
+  const col3Label = isGroup ? 'Paid' : 'SGD';
+  r = addSectionHeader(ws1, r, 'By Day');
+  ws1.getCell(`B${r}`).value = col2Label; ws1.getCell(`C${r}`).value = col3Label;
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+  const allDates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+  allDates.forEach((date, i) => {
+    const dayExps = exps.filter(e => e.date === date);
+    const dayF = dayExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount||0), 0);
+    if (isGroup) {
+      const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, t), 0);
+      r = addDataRow(ws1, r, formatDate(date), dayMyShare, dayF, false);
+    } else {
+      r = addDataRow(ws1, r, formatDate(date), dayF, daySgd, false);
+    }
+    if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
+  });
+
+  // ─── Sheet 2: Expenses ───
+  const ws2 = wb.addWorksheet('Expenses');
+  const expHeaders = ['Date', 'Description', 'Amount', 'Currency', 'SGD', 'Card', 'Category'];
+  if (isWork) expHeaders.push('Claimable');
+  if (isGroup) expHeaders.push('Shared', 'My Share', 'My Share SGD');
+
+  const headerRow = ws2.addRow(expHeaders);
+  headerRow.eachCell(cell => {
+    cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    cell.fill = hdrFill;
+    cell.border = thinBorder;
+    cell.alignment = { horizontal: 'center' };
+  });
+
+  exps.forEach((e, i) => {
+    const rowData = [
+      e.date,
+      e.description || '',
+      isSgdOnlyEntry(e) ? '' : e.amount,
+      isSgdOnlyEntry(e) ? 'SGD' : c,
+      e.sgdAmount || '',
+      e.cardName || '',
+      e.category || '',
+    ];
+    if (isWork) rowData.push(e.claimable ? 'Yes' : 'No');
+    if (isGroup) {
+      rowData.push(e.shared ? 'Yes' : 'No');
+      rowData.push(getMyShare(e, t));
+      rowData.push(getMySgdShare(e, t));
+    }
+    const row = ws2.addRow(rowData);
+    row.eachCell(cell => {
+      cell.font = regFont;
+      cell.border = thinBorder;
     });
-  return [h.join(","), ...rows].join("\n");
+    if (i % 2 === 0) row.eachCell(cell => { cell.fill = altFill; });
+  });
+
+  // Column widths
+  ws2.columns = [
+    { width: 12 }, { width: 28 }, { width: 14 }, { width: 8 }, { width: 12 },
+    { width: 16 }, { width: 14 },
+    ...(isWork ? [{ width: 10 }] : []),
+    ...(isGroup ? [{ width: 8 }, { width: 14 }, { width: 14 }] : []),
+  ];
+
+  // Number formats for amount columns
+  for (let i = 2; i <= exps.length + 1; i++) {
+    const amtCell = ws2.getCell(i, 3);
+    if (amtCell.value !== '') amtCell.numFmt = cFmt;
+    const sgdCell = ws2.getCell(i, 5);
+    if (sgdCell.value !== '') sgdCell.numFmt = sFmt;
+    if (isGroup) {
+      ws2.getCell(i, expHeaders.indexOf('My Share') + 1).numFmt = cFmt;
+      ws2.getCell(i, expHeaders.indexOf('My Share SGD') + 1).numFmt = sFmt;
+    }
+  }
+
+  // Auto-filter
+  ws2.autoFilter = { from: 'A1', to: String.fromCharCode(64 + expHeaders.length) + '1' };
+
+  // ─── Sheet 3: Settlement or Claimable ───
+  if (isGroup) {
+    const ws3 = wb.addWorksheet('Settlement');
+    ws3.columns = [{ width: 14 }, { width: 28 }, { width: 16 }, { width: 18 }];
+    let sr = 1;
+    ws3.getCell(`A${sr}`).value = 'Settlement';
+    ws3.getCell(`A${sr}`).font = hdrFont;
+    ws3.mergeCells(`A${sr}:D${sr}`);
+    sr++;
+    const sharedExps = exps.filter(e => e.shared);
+    const totalSharedPaid = sharedExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const totalMyShareShared = sharedExps.reduce((s,e) => s + getMyShare(e, t), 0);
+    const othersOwe = totalSharedPaid - totalMyShareShared;
+    const othersOweSgd = sharedExps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, t) + s, 0);
+
+    ws3.getCell(`A${sr}`).value = 'Others owe you';
+    ws3.getCell(`A${sr}`).font = boldFont;
+    ws3.getCell(`B${sr}`).value = othersOwe;
+    ws3.getCell(`B${sr}`).numFmt = cFmt;
+    ws3.getCell(`B${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
+    ws3.getCell(`C${sr}`).value = 'SGD';
+    ws3.getCell(`D${sr}`).value = othersOweSgd;
+    ws3.getCell(`D${sr}`).numFmt = sFmt;
+    ws3.getCell(`D${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
+    sr += 2;
+
+    const settleHeaders = ['Date', 'Description', 'Total', 'Split'];
+    const sHdrRow = ws3.addRow(settleHeaders);
+    sr++;
+    sHdrRow.eachCell(cell => {
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = hdrFill;
+      cell.border = thinBorder;
+    });
+
+    sharedExps.sort((a,b) => b.date.localeCompare(a.date)).forEach((e, i) => {
+      const gs = e.splitCount || getGroupSize(t);
+      const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
+      const isCustom = e.myShare != null;
+      const splitText = isCustom ? `My: ${money(getMyShare(e,t), c)}` : `÷${gs} = ${money(dispAmt/gs, isSgdOnlyEntry(e)?'SGD':c)} each`;
+      const row = ws3.addRow([e.date, e.description, dispAmt, splitText]);
+      row.eachCell(cell => { cell.font = regFont; cell.border = thinBorder; });
+      row.getCell(3).numFmt = isSgdOnlyEntry(e) ? sFmt : cFmt;
+      if (i % 2 === 0) row.eachCell(cell => { cell.fill = altFill; });
+    });
+  } else if (isWork) {
+    const ws3 = wb.addWorksheet('Claimable');
+    ws3.columns = [{ width: 14 }, { width: 28 }, { width: 14 }, { width: 12 }, { width: 14 }];
+    let sr = 1;
+    ws3.getCell(`A${sr}`).value = 'Claimable Expenses';
+    ws3.getCell(`A${sr}`).font = hdrFont;
+    ws3.mergeCells(`A${sr}:E${sr}`);
+    sr++;
+    const claimExps = exps.filter(e => e.claimable);
+    const claimTotal = claimExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const claimSgd = claimExps.reduce((s,e) => s + (e.sgdAmount||0), 0);
+    ws3.getCell(`A${sr}`).value = 'Total Claimable';
+    ws3.getCell(`A${sr}`).font = boldFont;
+    ws3.getCell(`B${sr}`).value = claimTotal; ws3.getCell(`B${sr}`).numFmt = cFmt;
+    ws3.getCell(`C${sr}`).value = 'SGD'; ws3.getCell(`D${sr}`).value = claimSgd; ws3.getCell(`D${sr}`).numFmt = sFmt;
+    sr += 2;
+    const cHdrRow = ws3.addRow(['Date', 'Description', 'Amount', 'SGD', 'Card']);
+    sr++;
+    cHdrRow.eachCell(cell => {
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = hdrFill;
+      cell.border = thinBorder;
+    });
+    claimExps.sort((a,b) => b.date.localeCompare(a.date)).forEach((e, i) => {
+      const row = ws3.addRow([e.date, e.description, isSgdOnlyEntry(e)?0:e.amount, e.sgdAmount||0, e.cardName||'']);
+      row.eachCell(cell => { cell.font = regFont; cell.border = thinBorder; });
+      row.getCell(3).numFmt = cFmt;
+      row.getCell(4).numFmt = sFmt;
+      if (i % 2 === 0) row.eachCell(cell => { cell.fill = altFill; });
+    });
+  }
+
+  // Generate and download
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (t.name || 'TripExpense').replace(/[^a-zA-Z0-9 ]/g, '') + '.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─── Dashboard ─────────────────────────────────────────
