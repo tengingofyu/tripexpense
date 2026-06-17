@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com https://firestore.googleapis.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
@@ -215,8 +215,7 @@ input[type="number"] { -moz-appearance: textfield; }
 
 /* CSV export area */
 .csv-area { margin-top: 8px; padding: 0 16px; }
-.csv-textarea { width: 100%; min-height: 120px; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 11px; resize: vertical; }
-.copy-csv-btn { margin-top: 6px; padding: 10px 20px; background: var(--success); border: none; border-radius: 6px; color: #fff; font-size: 12px; cursor: pointer; width: 100%; }
+/* Export */
 
 .empty { text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px; }
 .hidden { display: none; }
@@ -354,7 +353,22 @@ function saveLocal(key, value) {
 async function saveToFirebase() {
   if (!currentUser) return;
   try {
-    const { db, doc, setDoc } = window.FB;
+    const { db, doc, getDoc, setDoc } = window.FB;
+    
+    // Safeguard: never push empty/minimal data over existing cloud data
+    const snap2 = await getDoc(doc(db, "users", currentUser.uid));
+    if (snap2.exists()) {
+      const cloud = snap2.data();
+      const cloudTotal = (cloud.expenses || []).length + (cloud.pastTrips || []).reduce((s, pt) => s + (pt.expenses || []).length, 0);
+      const localTotal = state.expenses.length + state.pastTrips.reduce((s, pt) => s + (pt.expenses || []).length, 0);
+      // Block if local has significantly fewer TOTAL entries than cloud (>50% loss)
+      if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) {
+        console.error(`SYNC BLOCKED: Local total ${localTotal} entries, cloud total ${cloudTotal}. Refusing to overwrite.`);
+        showSyncStatus("Sync blocked — data mismatch");
+        return;
+      }
+    }
+    
     await setDoc(doc(db, "users", currentUser.uid), {
       trip: state.trip,
       expenses: state.expenses,
@@ -417,17 +431,25 @@ async function manualSync() {
     
     if (snap.exists()) {
       const cloud = snap.data();
-      // Merge local + cloud
-      const mergedExpenseMap = {};
-      state.expenses.forEach(e => { mergedExpenseMap[e.id] = e; });
-      (cloud.expenses || []).forEach(e => {
-        const existing = mergedExpenseMap[e.id];
-        if (!existing) { mergedExpenseMap[e.id] = e; return; }
-        const existingTime = existing.updatedAt || existing.createdAt || 0;
-        const cloudTime = e.updatedAt || e.createdAt || 0;
-        if (cloudTime >= existingTime) mergedExpenseMap[e.id] = e;
-      });
-      state.expenses = Object.values(mergedExpenseMap);
+      
+      // Save original arrays before any merge
+      const localExps = [...state.expenses];
+      const cloudExps = [...(cloud.expenses || [])];
+      const sameTrip = state.trip && cloud.trip && state.trip.id === cloud.trip.id;
+      
+      // Only merge expenses if same active trip on both sides
+      if (sameTrip || !state.trip || !cloud.trip) {
+        const mergedExpenseMap = {};
+        state.expenses.forEach(e => { mergedExpenseMap[e.id] = e; });
+        (cloud.expenses || []).forEach(e => {
+          const existing = mergedExpenseMap[e.id];
+          if (!existing) { mergedExpenseMap[e.id] = e; return; }
+          const existingTime = existing.updatedAt || existing.createdAt || 0;
+          const cloudTime = e.updatedAt || e.createdAt || 0;
+          if (cloudTime >= existingTime) mergedExpenseMap[e.id] = e;
+        });
+        state.expenses = Object.values(mergedExpenseMap);
+      }
 
       const mergedPastMap = {};
       state.pastTrips.forEach(pt => { mergedPastMap[pt.id] = pt; });
@@ -445,15 +467,46 @@ async function manualSync() {
       (cloud.cards || []).forEach(c => { mergedCardMap[c.id] = c; });
       state.cards = Object.values(mergedCardMap);
 
-      // Trip: cloud always wins (represents latest synced state)
-      if (cloud.trip) {
-        if (state.trip && state.trip.id !== cloud.trip.id) {
-          // Local has a different trip — it's outdated, move to past if not already there
-          if (!state.pastTrips.some(pt => pt.id === state.trip.id)) {
-            state.pastTrips.push({ ...state.trip, expenses: [], endedAt: Date.now() });
-          }
+      // ─── Trip merge ───
+      // When both sides have different active trips, the more recently created one wins.
+      // The losing trip + its expenses get preserved in pastTrips.
+      function saveToPastTrips(trip, expenses) {
+        const idx = state.pastTrips.findIndex(pt => pt.id === trip.id);
+        if (idx >= 0) {
+          // Already in pastTrips — merge expenses to keep the richer version
+          const existing = state.pastTrips[idx];
+          const mergedMap = {};
+          (existing.expenses || []).forEach(e => { mergedMap[e.id] = e; });
+          expenses.forEach(e => {
+            const ex = mergedMap[e.id];
+            if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) mergedMap[e.id] = e;
+          });
+          state.pastTrips[idx] = { ...existing, ...trip, expenses: Object.values(mergedMap) };
+        } else {
+          state.pastTrips.push({ ...trip, expenses, endedAt: Date.now() });
         }
+      }
+
+      if (cloud.trip && state.trip && cloud.trip.id !== state.trip.id) {
+        const cloudNewer = (cloud.trip.createdAt || 0) >= (state.trip.createdAt || 0);
+        if (cloudNewer) {
+          // Cloud trip wins — preserve local trip + expenses in pastTrips
+          saveToPastTrips(state.trip, localExps);
+          state.trip = cloud.trip;
+          state.expenses = cloudExps;
+        } else {
+          // Local trip wins — preserve cloud trip + expenses in pastTrips
+          saveToPastTrips(cloud.trip, cloudExps);
+          state.expenses = localExps;
+        }
+      } else if (cloud.trip && !state.trip) {
         state.trip = cloud.trip;
+        state.expenses = cloudExps;
+      } else if (state.trip && cloud.trip && state.trip.id === cloud.trip.id) {
+        // Same trip — expenses already merged above
+        if ((cloud.trip.updatedAt || cloud.trip.createdAt || 0) > (state.trip.updatedAt || state.trip.createdAt || 0)) {
+          state.trip = cloud.trip;
+        }
       }
     }
 
@@ -463,7 +516,13 @@ async function manualSync() {
     saveLocal("cards", state.cards);
     saveLocal("past-trips", state.pastTrips);
     await saveToFirebase();
-    render();
+    // Only render if user isn't actively typing or editing
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.value.length > 0;
+    const isEditing = state.editingId != null;
+    if (!isTyping && !isEditing) {
+      render();
+    }
     showSyncStatus("Synced ✓");
   } catch(e) {
     console.error("Sync error:", e);
@@ -2039,6 +2098,8 @@ document.getElementById("google-signin")?.addEventListener("click", async () => 
 });
 
 document.getElementById("signout-btn")?.addEventListener("click", async () => {
+  // Cancel any pending auto-save FIRST
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   const { auth, signOut } = window.FB;
   await signOut(auth);
   // Clear sensitive data from localStorage
