@@ -416,6 +416,7 @@ function loadState() {
   state.syncMode = loadLocal("sync-mode", "auto");
   state.lastSyncAt = loadLocal("last-sync-at", null);
   cleanMisplacedExpenses();
+  dedupeTrips();
 }
 
 // Move expenses whose currency doesn't match the active trip to the correct past trip
@@ -438,6 +439,35 @@ function cleanMisplacedExpenses() {
   });
   const misplacedIds = new Set(misplaced.map(e => e.id));
   state.expenses = state.expenses.filter(e => !misplacedIds.has(e.id));
+}
+
+// Merge duplicate past trips that share the same name + currency (keep richer expense set)
+function dedupeTrips() {
+  if (!state.pastTrips || state.pastTrips.length < 2) return;
+  const byKey = {};
+  const order = [];
+  state.pastTrips.forEach(pt => {
+    const key = `${pt.name}|${pt.currency}`;
+    if (!byKey[key]) { byKey[key] = pt; order.push(key); return; }
+    // Duplicate found — merge expenses by ID, keep newer-edited version of each
+    const existing = byKey[key];
+    const merged = {};
+    (existing.expenses || []).forEach(e => { merged[e.id] = e; });
+    (pt.expenses || []).forEach(e => {
+      const ex = merged[e.id];
+      if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
+    });
+    // Keep the trip metadata that has more expenses with SGD filled (more complete)
+    const existingSgd = (existing.expenses || []).filter(e => e.sgdAmount).length;
+    const ptSgd = (pt.expenses || []).filter(e => e.sgdAmount).length;
+    const baseTrip = ptSgd > existingSgd ? pt : existing;
+    byKey[key] = { ...baseTrip, expenses: Object.values(merged) };
+  });
+  const deduped = order.map(k => byKey[k]);
+  if (deduped.length !== state.pastTrips.length) {
+    console.log(`Dedupe: merged ${state.pastTrips.length - deduped.length} duplicate trip(s)`);
+    state.pastTrips = deduped;
+  }
 }
 
 function persist() {
@@ -550,8 +580,9 @@ async function manualSync() {
       }
     }
 
-    // ─── Data integrity: remove misplaced expenses ───
+    // ─── Data integrity: remove misplaced expenses + dedupe trips ───
     cleanMisplacedExpenses();
+    dedupeTrips();
 
     // Save merged data locally and push to cloud
     saveLocal("trip", state.trip);
