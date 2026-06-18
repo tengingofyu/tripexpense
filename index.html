@@ -2246,6 +2246,8 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   // Show sign-in screen
   document.getElementById("app").classList.add("hidden");
   document.getElementById("auth-screen").classList.remove("hidden");
+  const authStatus = document.getElementById("auth-status");
+  if (authStatus) authStatus.textContent = "";
 });
 
 document.getElementById("offline-btn")?.addEventListener("click", () => {
@@ -2354,6 +2356,8 @@ function initAuth() {
       } else {
         document.getElementById("auth-screen").classList.remove("hidden");
         document.getElementById("app").classList.add("hidden");
+        const as = document.getElementById("auth-status");
+        if (as) as.textContent = "";
       }
     }
   });
