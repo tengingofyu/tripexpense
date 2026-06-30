@@ -236,6 +236,22 @@ input[type="number"] { -moz-appearance: textfield; }
 .auth-btn { display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .auth-btn img { width: 20px; height: 20px; }
 .auth-status { font-size: 12px; color: var(--danger); margin-top: 12px; }
+/* Onboarding */
+.onboarding { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(4px); }
+.onboarding.hidden { display: none; }
+.onboarding-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; max-width: 360px; width: 100%; padding: 32px 24px 20px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.onboarding-step { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ob-icon { font-size: 44px; margin-bottom: 16px; }
+.ob-title { font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 12px; }
+.ob-text { font-size: 14px; color: var(--text-muted); margin: 0 0 14px; line-height: 1.5; }
+.ob-example { background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 16px; font-size: 16px; color: var(--accent); font-family: monospace; margin: 0 0 14px; }
+.ob-hint { font-size: 12px; color: var(--text-dim); margin: 0; line-height: 1.5; }
+.onboarding-dots { display: flex; gap: 8px; justify-content: center; margin: 20px 0; }
+.ob-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+.ob-dot.active { background: var(--accent); }
+.onboarding-actions { display: flex; justify-content: space-between; align-items: center; }
+.ob-skip { background: none; border: none; color: var(--text-dim); font-size: 14px; cursor: pointer; padding: 10px 16px; }
+.ob-next { background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600; padding: 10px 28px; cursor: pointer; }
 .user-info { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 4px 16px; padding-top: calc(env(safe-area-inset-top, 0px) + 4px); }
 .user-info.online { color: var(--success); }
 .user-info.offline { color: var(--danger); }
@@ -247,6 +263,18 @@ input[type="number"] { -moz-appearance: textfield; }
 </style>
 </head>
 <body>
+
+<!-- Onboarding overlay -->
+<div id="onboarding" class="onboarding hidden">
+  <div class="onboarding-card">
+    <div class="onboarding-step" id="ob-step"></div>
+    <div class="onboarding-dots" id="ob-dots"></div>
+    <div class="onboarding-actions">
+      <button class="ob-skip" id="ob-skip">Skip</button>
+      <button class="ob-next" id="ob-next">Next</button>
+    </div>
+  </div>
+</div>
 
 <div id="auth-screen" class="auth-screen">
   <div class="auth-logo">TripExpense</div>
@@ -798,7 +826,7 @@ function renderExpenses() {
   if (!isReadOnly) {
     html += '<div class="quick-entry">';
     html += '<div class="input-row">';
-    html += `<input class="main-input" id="expense-input" type="text" placeholder="amount description card" ${state.pendingExpense ? 'disabled' : ''}>`;
+    html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 15 lunch visa" ${state.pendingExpense ? 'disabled' : ''}>`;
     html += '</div>';
     // Claim/Shared prompt
     if (state.pendingExpense) {
@@ -1806,11 +1834,19 @@ function renderCards() {
   }
   h += '</div>';
 
+  // Help section
+  h += '<div class="backup-section"><h3 class="section-title">Help</h3>';
+  h += '<button class="backup-btn" id="replay-tutorial" style="width:100%;">Show Tutorial Again</button>';
+  h += '</div>';
+
   document.getElementById("view-cards").innerHTML = h;
 
   // Bind
   document.querySelectorAll("[data-remove-card]").forEach(el => {
     el.addEventListener("click", () => { const cid = el.dataset.removeCard; state.cards = state.cards.filter(c=>c.id!==cid); if (!state.deletedCardIds.includes(cid)) state.deletedCardIds.push(cid); persist(); render(); });
+  });
+  document.getElementById("replay-tutorial")?.addEventListener("click", () => {
+    if (typeof showOnboarding === "function") showOnboarding();
   });
   document.getElementById("add-card")?.addEventListener("click", () => {
     const n = document.getElementById("new-card-name").value.trim();
@@ -2377,6 +2413,48 @@ if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
 }
 
 initAuth();
+
+// ─── Onboarding ───
+const ONBOARDING_STEPS = [
+  { icon: "✏️", title: "Type what you spent", text: "Just type naturally in one line:", example: "15 lunch visa", hint: "Amount, what it was, and which card. That's it." },
+  { icon: "🌏", title: "Travelling overseas?", text: "Type two numbers — foreign first, then SGD:", example: "12000 dinner   18", hint: "Or just the foreign amount and fill SGD later. Home-currency expenses: add 'sgd'." },
+  { icon: "📊", title: "See your spending", text: "Tap Summary for totals by day, card, and category — in both currencies.", example: "", hint: "Travelling with others? Split bills and track who owes you." },
+  { icon: "📤", title: "Export anytime", text: "Tap Export for a formatted Excel file you can share or keep.", example: "", hint: "Sign in (optional) to sync across your devices." },
+];
+let obIndex = 0;
+
+function showOnboarding() {
+  obIndex = 0;
+  renderOnboardingStep();
+  document.getElementById("onboarding").classList.remove("hidden");
+}
+function renderOnboardingStep() {
+  const s = ONBOARDING_STEPS[obIndex];
+  let html = `<div class="ob-icon">${s.icon}</div><h2 class="ob-title">${s.title}</h2><p class="ob-text">${s.text}</p>`;
+  if (s.example) html += `<div class="ob-example">${s.example}</div>`;
+  html += `<p class="ob-hint">${s.hint}</p>`;
+  document.getElementById("ob-step").innerHTML = html;
+  // Dots
+  let dots = "";
+  ONBOARDING_STEPS.forEach((_, i) => { dots += `<span class="ob-dot ${i===obIndex?'active':''}"></span>`; });
+  document.getElementById("ob-dots").innerHTML = dots;
+  // Button label
+  document.getElementById("ob-next").textContent = obIndex === ONBOARDING_STEPS.length - 1 ? "Get Started" : "Next";
+}
+function dismissOnboarding() {
+  document.getElementById("onboarding").classList.add("hidden");
+  saveLocal("onboarded", true);
+}
+document.getElementById("ob-next")?.addEventListener("click", () => {
+  if (obIndex < ONBOARDING_STEPS.length - 1) { obIndex++; renderOnboardingStep(); }
+  else dismissOnboarding();
+});
+document.getElementById("ob-skip")?.addEventListener("click", dismissOnboarding);
+
+// Show onboarding on first visit
+if (!loadLocal("onboarded", false)) {
+  setTimeout(showOnboarding, 400);
+}
 </script>
 </body>
 </html>
