@@ -233,7 +233,13 @@ input[type="number"] { -moz-appearance: textfield; }
 .auth-screen.hidden { display: none; }
 .auth-logo { font-size: 28px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
 .auth-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; }
-.auth-btn { display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.auth-btn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px 28px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; min-width: 240px; }
+.auth-btn:active { opacity: 0.85; }
+.auth-local-note { font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 28px 0; width: 240px; color: var(--text-dim); font-size: 12px; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.auth-btn-secondary { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 24px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.auth-btn-secondary img { width: 16px; height: 16px; }
 .auth-btn img { width: 20px; height: 20px; }
 .auth-status { font-size: 12px; color: var(--danger); margin-top: 12px; }
 .auth-disclosure { margin-top: 32px; max-width: 340px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; text-align: left; }
@@ -283,18 +289,23 @@ input[type="number"] { -moz-appearance: textfield; }
 
 <div id="auth-screen" class="auth-screen">
   <div class="auth-logo">TripExpense</div>
-  <div class="auth-sub">Sign in to sync your expenses across devices</div>
-  <button class="auth-btn" id="google-signin">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"> Sign in with Google
+  <div class="auth-sub">Track your trip spending, fast.</div>
+  <button class="auth-btn" id="offline-btn">Start Tracking</button>
+  <div class="auth-local-note">Works right here on your device — no account needed.</div>
+
+  <div class="auth-divider"><span>or</span></div>
+
+  <button class="auth-btn-secondary" id="google-signin">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"> Sign in to sync across devices
   </button>
   <div class="auth-status" id="auth-status"></div>
-  <button id="offline-btn" style="margin-top:24px;background:none;border:1px solid var(--border);border-radius:8px;padding:12px 28px;color:var(--text-dim);font-size:13px;cursor:pointer;font-family:inherit;">Use offline</button>
   <div class="auth-disclosure">
-    <p><strong>Use offline</strong> — your data stays only on this device. Nothing is uploaded.</p>
-    <p><strong>Sign in</strong> — your trip data syncs to the cloud (Google Firebase) so you can use it across devices. Your data is private to your account; other users can't see it. As the app's developer, I technically have access to data on the server. I won't use it, but you should know before choosing to sync.</p>
-    <p class="auth-disclosure-fine">This is a free hobby app, provided as-is with no warranty.</p>
+    <p><strong>Start Tracking</strong> — your data stays only on this device. Nothing is uploaded, no account needed.</p>
+    <p><strong>Sign in</strong> (optional) — syncs your trips to the cloud (Google Firebase) so you can use them across devices. Your data is private to your account; other users can't see it. As the app's developer, I technically have access to data on the server — I won't look at it, but you should know before choosing to sync.</p>
+    <p class="auth-disclosure-fine">Free hobby app, provided as-is with no warranty.</p>
   </div>
 </div>
+
 
 <div id="app" class="hidden">
   <!-- User info -->
@@ -2417,8 +2428,10 @@ if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
   updateUserBar();
   render();
 } else {
-  // No local data — might be returning from redirect. Show loading, let Firebase decide.
-  document.getElementById("auth-status").textContent = "Loading...";
+  // No local data — show the welcome/auth screen (local-first).
+  // initAuth will override this only if a signed-in session is restored.
+  document.getElementById("auth-screen").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
   render();
 }
 
@@ -2429,7 +2442,7 @@ const ONBOARDING_STEPS = [
   { icon: "✏️", title: "Type what you spent", text: "Just type naturally in one line:", example: "15 lunch visa", hint: "Amount, what it was, and which card. That's it." },
   { icon: "🌏", title: "Travelling overseas?", text: "Type two numbers — foreign first, then SGD:", example: "12000 dinner   18", hint: "Or just the foreign amount and fill SGD later. Home-currency expenses: add 'sgd'." },
   { icon: "📊", title: "See your spending", text: "Tap Summary for totals by day, card, and category — in both currencies.", example: "", hint: "Travelling with others? Split bills and track who owes you. Travelling for work? Track what's claimable." },
-  { icon: "📤", title: "Export anytime", text: "Tap Export for a formatted Excel file you can share or keep.", example: "", hint: "Sign in (optional) to sync across your devices." },
+  { icon: "📤", title: "Export anytime", text: "Tap Export for a formatted Excel file you can share or keep.", example: "", hint: "Your data stays on your device. Use Backup in Settings to move it between devices, or sign in (optional) to sync automatically." },
 ];
 let obIndex = 0;
 
