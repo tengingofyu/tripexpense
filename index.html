@@ -236,6 +236,11 @@ input[type="number"] { -moz-appearance: textfield; }
 .auth-btn { display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .auth-btn img { width: 20px; height: 20px; }
 .auth-status { font-size: 12px; color: var(--danger); margin-top: 12px; }
+.auth-disclosure { margin-top: 32px; max-width: 340px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; text-align: left; }
+.auth-disclosure p { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0 0 10px; }
+.auth-disclosure p:last-child { margin-bottom: 0; }
+.auth-disclosure strong { color: var(--text); }
+.auth-disclosure-fine { color: var(--text-dim) !important; font-style: italic; }
 /* Onboarding */
 .onboarding { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(4px); }
 .onboarding.hidden { display: none; }
@@ -284,6 +289,11 @@ input[type="number"] { -moz-appearance: textfield; }
   </button>
   <div class="auth-status" id="auth-status"></div>
   <button id="offline-btn" style="margin-top:24px;background:none;border:1px solid var(--border);border-radius:8px;padding:12px 28px;color:var(--text-dim);font-size:13px;cursor:pointer;font-family:inherit;">Use offline</button>
+  <div class="auth-disclosure">
+    <p><strong>Use offline</strong> — your data stays only on this device. Nothing is uploaded.</p>
+    <p><strong>Sign in</strong> — your trip data syncs to the cloud (Google Firebase) so you can use it across devices. Your data is private to your account; other users can't see it. As the app's developer, I technically have access to data on the server. I won't use it, but you should know before choosing to sync.</p>
+    <p class="auth-disclosure-fine">This is a free hobby app, provided as-is with no warranty.</p>
+  </div>
 </div>
 
 <div id="app" class="hidden">
@@ -2418,7 +2428,7 @@ initAuth();
 const ONBOARDING_STEPS = [
   { icon: "✏️", title: "Type what you spent", text: "Just type naturally in one line:", example: "15 lunch visa", hint: "Amount, what it was, and which card. That's it." },
   { icon: "🌏", title: "Travelling overseas?", text: "Type two numbers — foreign first, then SGD:", example: "12000 dinner   18", hint: "Or just the foreign amount and fill SGD later. Home-currency expenses: add 'sgd'." },
-  { icon: "📊", title: "See your spending", text: "Tap Summary for totals by day, card, and category — in both currencies.", example: "", hint: "Travelling with others? Split bills and track who owes you." },
+  { icon: "📊", title: "See your spending", text: "Tap Summary for totals by day, card, and category — in both currencies.", example: "", hint: "Travelling with others? Split bills and track who owes you. Travelling for work? Track what's claimable." },
   { icon: "📤", title: "Export anytime", text: "Tap Export for a formatted Excel file you can share or keep.", example: "", hint: "Sign in (optional) to sync across your devices." },
 ];
 let obIndex = 0;
