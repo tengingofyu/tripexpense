@@ -336,7 +336,7 @@ input[type="number"] { -moz-appearance: textfield; }
   <div id="view-setup" class="hidden"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" integrity="sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // ─── Data ──────────────────────────────────────────────
 const DEFAULT_CARDS = [
@@ -405,7 +405,28 @@ function loadLocal(key, fallback) {
   catch { return fallback; }
 }
 function saveLocal(key, value) {
-  try { localStorage.setItem("tengtrip-" + key, JSON.stringify(value)); } catch(e) { console.error(e); }
+  try {
+    localStorage.setItem("tengtrip-" + key, JSON.stringify(value));
+  } catch(e) {
+    console.error("saveLocal failed:", e);
+    showStorageWarning();
+  }
+}
+
+// Persistent banner when device storage fails — data isn't being saved
+let storageWarningShown = false;
+function showStorageWarning() {
+  if (storageWarningShown) return;
+  storageWarningShown = true;
+  const bar = document.createElement("div");
+  bar.id = "storage-warning";
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2000;background:#7a1f1f;color:#fff;font-size:12px;padding:10px 14px;text-align:center;line-height:1.4;";
+  bar.innerHTML = 'Storage full — changes are NOT being saved. Export a Backup now (Settings), then delete old trips or free up space. <button id="storage-warning-close" style="margin-left:8px;background:none;border:1px solid #fff;border-radius:4px;color:#fff;font-size:11px;padding:2px 8px;cursor:pointer;">Dismiss</button>';
+  document.body.appendChild(bar);
+  document.getElementById("storage-warning-close")?.addEventListener("click", () => {
+    bar.remove();
+    storageWarningShown = false; // re-warn if it fails again
+  });
 }
 
 async function saveToFirebase() {
@@ -1818,10 +1839,11 @@ function renderCards() {
     h += '</div>';
   }
 
-  // Cash currency converter (only if trip currency isn't SGD)
+  // Cash currency converter (only if trip currency isn't SGD and there are cash entries)
   if (state.trip && state.trip.currency !== "SGD") {
     const cur = state.trip.currency;
     const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
+    if (cashEntries.length > 0) {
     h += `<div class="backup-section"><h3 class="section-title">SGD → ${cur} (Cash)</h3>`;
     h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${cur} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
     h += '<div style="display:flex;flex-direction:column;gap:12px;">';
@@ -1831,16 +1853,19 @@ function renderCards() {
     h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${cashEntries.length} Cash Entries</button>`;
     h += '<div id="cash-rate-msg" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>';
     h += '</div>';
+    }
   }
 
-  // Sync settings
-  h += '<div class="backup-section"><h3 class="section-title">Sync Settings</h3>';
-  h += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
-  h += `<button class="type-btn ${state.syncMode==='auto'?'active':''}" id="sync-auto">Auto Sync</button>`;
-  h += `<button class="type-btn ${state.syncMode==='manual'?'active':''}" id="sync-manual">Manual Sync</button>`;
-  h += '</div>';
-  h += `<div style="font-size:11px;color:var(--text-muted);">${state.syncMode==='auto'?'Syncs automatically after every edit when signed in.':'Only syncs when you tap the ⟳ button. Good for limited data.'}</div>`;
-  h += '</div>';
+  // Sync settings (only relevant when signed in)
+  if (currentUser) {
+    h += '<div class="backup-section"><h3 class="section-title">Sync Settings</h3>';
+    h += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+    h += `<button class="type-btn ${state.syncMode==='auto'?'active':''}" id="sync-auto">Auto Sync</button>`;
+    h += `<button class="type-btn ${state.syncMode==='manual'?'active':''}" id="sync-manual">Manual Sync</button>`;
+    h += '</div>';
+    h += `<div style="font-size:11px;color:var(--text-muted);">${state.syncMode==='auto'?'Syncs automatically after every edit when signed in.':'Only syncs when you tap the ⟳ button. Good for limited data.'}</div>`;
+    h += '</div>';
+  }
 
   // Backup
   h += '<div class="backup-section"><h3 class="section-title">Backup & Restore</h3>';
@@ -1904,7 +1929,7 @@ function renderCards() {
     persist(); render();
   });
   document.getElementById("copy-backup")?.addEventListener("click", () => {
-    const data = JSON.stringify({ trip:state.trip, expenses:state.expenses, cards:state.cards, pastTrips:state.pastTrips, version:1, exportedAt:Date.now() });
+    const data = JSON.stringify({ trip:state.trip, expenses:state.expenses, cards:state.cards, deletedCardIds:state.deletedCardIds, pastTrips:state.pastTrips, version:1, exportedAt:Date.now() });
     navigator.clipboard.writeText(data).then(() => {
       const st = document.getElementById("backup-status"); if(st) { st.textContent="Copied to clipboard!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
     }).catch(() => { state.showRestore=true; render(); const ta=document.getElementById("restore-text"); if(ta) ta.value=data; });
@@ -1938,6 +1963,7 @@ function renderCards() {
       if (data.trip) state.trip = data.trip;
       if (data.expenses) state.expenses = data.expenses;
       if (data.cards) state.cards = data.cards;
+      if (Array.isArray(data.deletedCardIds)) state.deletedCardIds = data.deletedCardIds;
       if (data.pastTrips) state.pastTrips = data.pastTrips;
       state.showRestore = false;
       persist(); render();
@@ -2313,7 +2339,10 @@ document.getElementById("offline-btn")?.addEventListener("click", () => {
   state.isOffline = true;
   updateUserBar();
   loadState();
-  if (!state.trip) { state.currentView = "history"; }
+  if (!state.trip) {
+    // Brand-new user (no trips at all) → go straight to New Trip; returning user → History
+    state.currentView = state.pastTrips.length === 0 ? "setup" : "history";
+  }
   render();
 });
 
