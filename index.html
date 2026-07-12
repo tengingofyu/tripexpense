@@ -429,25 +429,145 @@ function showStorageWarning() {
   });
 }
 
+// ─── Sync safety (added 2026-07-12 after the 10 Jul data-loss incident) ───
+// Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
+// Firestore rules enforce appBuild >= existing, so a stale tab running old
+// cached code (which writes a lower/missing appBuild) is rejected server-side.
+const APP_BUILD = 2026071200;
+
+// Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
+function collectTripStats(trip, expenses, pastTrips) {
+  const map = {};
+  const add = (t, exps) => {
+    if (!t || !t.id) return;
+    const list = Array.isArray(exps) ? exps : [];
+    map[t.id] = {
+      name: t.name || t.id,
+      count: list.length,
+      sgdCount: list.filter(e => e && e.sgdAmount).length,
+      ids: list.map(e => e && e.id).filter(Boolean),
+    };
+  };
+  add(trip, expenses);
+  (pastTrips || []).forEach(pt => add(pt, pt.expenses));
+  return map;
+}
+
+// Compare what we are about to write against what the cloud currently holds.
+// Returns { block: string|null, risky: boolean }.
+//  - block: human-readable reason the write must be refused
+//  - risky: write is allowed but reduces data somewhere → snapshot cloud first
+function syncGuard(cloud) {
+  const cloudTrips = collectTripStats(cloud.trip, cloud.expenses, cloud.pastTrips);
+  const localTrips = collectTripStats(state.trip, state.expenses, state.pastTrips);
+  const localExpIds = new Set();
+  Object.values(localTrips).forEach(t => t.ids.forEach(id => localExpIds.add(id)));
+  let risky = ((cloud.trip && cloud.trip.id) || null) !== ((state.trip && state.trip.id) || null);
+
+  for (const tid of Object.keys(cloudTrips)) {
+    const ct = cloudTrips[tid];
+    if (ct.count === 0) continue;
+    const lt = localTrips[tid];
+    if (!lt) {
+      // Trip id absent locally. Legitimate cause: dedupeTrips() merged it into
+      // another trip — its expenses survive under a different trip id. Block
+      // only if NONE of its expense ids exist anywhere locally (whole-trip loss).
+      const survivors = ct.ids.filter(id => localExpIds.has(id)).length;
+      if (survivors === 0) return { block: `"${ct.name}" (${ct.count} entries) would be wiped`, risky: true };
+      risky = true;
+      continue;
+    }
+    // Per-trip entry-count regression: small drops are normal (deletes sync
+    // one at a time); large drops mean a stale/partial dataset is writing.
+    const drop = ct.count - lt.count;
+    if (drop > Math.max(3, Math.ceil(ct.count * 0.10))) {
+      return { block: `"${ct.name}" would drop ${drop} of ${ct.count} entries`, risky: true };
+    }
+    // SGD-completeness regression: SGD values are only ever added or edited.
+    // A drop bigger than the entry-count drop (+2 slack for legitimate edits)
+    // means SGD data is being downgraded (the China May 2026 failure mode).
+    const sgdDrop = ct.sgdCount - lt.sgdCount;
+    if (sgdDrop > Math.max(0, drop) + 2) {
+      return { block: `"${ct.name}" would lose SGD on ${sgdDrop} entries`, risky: true };
+    }
+    if (drop > 0 || sgdDrop > 0) risky = true;
+  }
+  return { block: null, risky };
+}
+
+// Snapshot the CURRENT cloud state before we overwrite it.
+// Local copy: always (latest 2, localStorage). Cloud copy: rolling 5 slots
+// under users/{uid}/snapshots/snap-N (requires the 2026-07 rules update).
+async function snapshotCloud(cloud, reason) {
+  const now = Date.now();
+  try {
+    const prev = loadLocal("cloud-snapshots", []);
+    prev.unshift({ takenAt: now, reason, data: cloud });
+    saveLocal("cloud-snapshots", prev.slice(0, 2));
+  } catch (e) { console.error("Local snapshot failed:", e); }
+  try {
+    const { db, doc, setDoc } = window.FB;
+    const slot = Math.floor(now / 1800000) % 5; // 30-min windows → 5 rolling slots
+    await setDoc(doc(db, "users", currentUser.uid, "snapshots", "snap-" + slot), {
+      takenAt: now,
+      reason,
+      appBuild: APP_BUILD,
+      data: JSON.stringify(cloud),
+    });
+    saveLocal("last-cloud-snapshot-at", now);
+  } catch (e) {
+    // Best-effort: do not abort the save, but surface it — most likely cause
+    // is the snapshots rules block not being deployed yet.
+    console.error("Cloud snapshot failed (snapshots rules deployed?):", e);
+    showSyncStatus("Snapshot failed — check rules");
+  }
+}
+
 async function saveToFirebase() {
   if (!currentUser) return;
   try {
     const { db, doc, getDoc, setDoc } = window.FB;
-    
-    // Safeguard: never push empty/minimal data over existing cloud data
+
+    // Safeguard: never push empty/minimal/regressed data over existing cloud data
     const snap2 = await getDoc(doc(db, "users", currentUser.uid));
     if (snap2.exists()) {
       const cloud = snap2.data();
+
+      // Guard 0 (stale code): never write from a tab running an older build
+      // than the one that last wrote the cloud doc. Firestore rules enforce
+      // this server-side too; this check just gives a clear message.
+      if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
+        console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
+        showSyncStatus("App outdated — refresh this tab");
+        return;
+      }
+
+      // Guard 1: block if local has significantly fewer TOTAL entries than cloud (>50% loss)
       const cloudTotal = (cloud.expenses || []).length + (cloud.pastTrips || []).reduce((s, pt) => s + (pt.expenses || []).length, 0);
       const localTotal = state.expenses.length + state.pastTrips.reduce((s, pt) => s + (pt.expenses || []).length, 0);
-      // Block if local has significantly fewer TOTAL entries than cloud (>50% loss)
       if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) {
         console.error(`SYNC BLOCKED: Local total ${localTotal} entries, cloud total ${cloudTotal}. Refusing to overwrite.`);
         showSyncStatus("Sync blocked — data mismatch");
         return;
       }
+
+      // Guard 2: whole-trip-loss + per-trip count/SGD regression
+      // (the 10 Jul incident: Korea ≈27% of total slipped under Guard 1)
+      const g = syncGuard(cloud);
+      if (g.block) {
+        console.error(`SYNC BLOCKED: ${g.block}. Tap ⟳ Sync to merge with cloud first.`);
+        showSyncStatus("Sync blocked — " + g.block);
+        return;
+      }
+
+      // Snapshot cloud before overwriting: always before a risky (data-reducing)
+      // write, otherwise at most every 30 minutes.
+      const lastSnapAt = loadLocal("last-cloud-snapshot-at", 0);
+      if (g.risky || Date.now() - lastSnapAt > 1800000) {
+        await snapshotCloud(cloud, g.risky ? "pre-risky-write" : "periodic");
+      }
     }
-    
+
     await setDoc(doc(db, "users", currentUser.uid), {
       trip: state.trip,
       expenses: state.expenses,
@@ -455,6 +575,7 @@ async function saveToFirebase() {
       deletedCardIds: state.deletedCardIds,
       pastTrips: state.pastTrips,
       updatedAt: Date.now(),
+      appBuild: APP_BUILD,
     });
     state.lastSyncAt = Date.now();
     saveLocal("last-sync-at", state.lastSyncAt);
@@ -462,6 +583,10 @@ async function saveToFirebase() {
     console.error("Firebase save error:", e);
     if (!navigator.onLine) {
       showSyncStatus("Saved locally (offline)");
+    } else if (e && e.code === "permission-denied") {
+      // Rules rejected the write — a newer build wrote the doc after our read,
+      // or this tab's code predates the appBuild rules. Either way: refresh.
+      showSyncStatus("Write rejected — refresh this tab");
     } else {
       showSyncStatus("Sync failed");
     }
@@ -566,7 +691,15 @@ async function manualSync() {
     
     if (snap.exists()) {
       const cloud = snap.data();
-      
+
+      // Stale-code check: don't half-sync from a tab running an older build
+      // than the one that last wrote the cloud doc.
+      if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
+        console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
+        showSyncStatus("App outdated — refresh this tab");
+        return;
+      }
+
       // Save original arrays before any merge
       const localExps = [...state.expenses];
       const cloudExps = [...(cloud.expenses || [])];
@@ -2317,6 +2450,8 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   localStorage.removeItem("tengtrip-deleted-card-ids");
   localStorage.removeItem("tengtrip-past-trips");
   localStorage.removeItem("tengtrip-last-sync-at");
+  localStorage.removeItem("tengtrip-cloud-snapshots");
+  localStorage.removeItem("tengtrip-last-cloud-snapshot-at");
   // Reset state
   currentUser = null;
   state.trip = null;
@@ -2407,6 +2542,14 @@ function formatSyncTime() {
 // Step 1: Load from localStorage immediately and render
 loadState();
 if (!state.trip) { state.currentView = "history"; }
+
+// Ask the browser to protect this origin's storage from eviction
+// (iOS 7-day WebKit purge — limited efficacy, but costs nothing).
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist()
+    .then(granted => console.log("storage.persist granted:", granted))
+    .catch(() => {});
+}
 
 // Step 2: Check if we should show sign-in or app
 function initAuth() {
