@@ -433,7 +433,7 @@ function showStorageWarning() {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071200;
+const APP_BUILD = 2026071201;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -663,6 +663,32 @@ function dedupeTrips() {
     console.log(`Dedupe: merged ${state.pastTrips.length - deduped.length} duplicate trip(s)`);
     state.pastTrips = deduped;
   }
+}
+
+// Move the currently open trip back into pastTrips, merging by id if it's
+// already there. Never discards data. (12 Jul fix: Reopen used to overwrite
+// the open trip silently, losing it and all its expenses.)
+function parkActiveTrip() {
+  if (!state.trip) return;
+  const t = state.trip;
+  const exps = state.expenses || [];
+  const idx = state.pastTrips.findIndex(p => p.id === t.id);
+  if (idx >= 0) {
+    const existing = state.pastTrips[idx];
+    const merged = {};
+    (existing.expenses || []).forEach(e => { merged[e.id] = e; });
+    exps.forEach(e => {
+      const ex = merged[e.id];
+      if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
+    });
+    state.pastTrips[idx] = { ...existing, ...t, expenses: Object.values(merged), endedAt: existing.endedAt || Date.now() };
+  } else {
+    state.pastTrips.push({ ...t, expenses: exps, endedAt: Date.now() });
+  }
+  state.trip = null;
+  state.expenses = [];
+  state.isHistorical = false;
+  state.editingEnabled = false;
 }
 
 function persist() {
@@ -945,7 +971,15 @@ function render() {
       btn.textContent = label;
       btn.dataset.view = v;
       if (v === state.currentView) btn.classList.add("active");
-      btn.addEventListener("click", () => { state.currentView = v; state.editingId = null;  render(); });
+      btn.addEventListener("click", () => {
+        // Auto-return: leaving a reopened (historical) trip via the History
+        // tab parks it back into pastTrips (replaces the old Back to History button).
+        if (v === "history" && state.isHistorical && state.trip) {
+          parkActiveTrip();
+          persist();
+        }
+        state.currentView = v; state.editingId = null;  render();
+      });
       navEl.appendChild(btn);
     });
   } else {
@@ -993,7 +1027,7 @@ function renderExpenses() {
       html += '<div style="flex:1;font-size:12px;color:var(--warn);display:flex;align-items:center;">Editing enabled</div>';
       html += '<button class="export-btn" id="lock-trip-btn" style="flex:0 0 auto;padding:8px 16px;">Lock</button>';
     }
-    html += '<button class="export-btn" id="back-to-history" style="flex:1;">Back to History</button>';
+    html += '<button class="export-btn" id="export-excel-top" style="flex:1;">Export Excel</button>';
     html += '</div>';
   }
 
@@ -1157,17 +1191,11 @@ function bindExpenseEvents() {
     state.editingId = null;
     render();
   });
-  const backToHistory = document.getElementById("back-to-history");
-  if (backToHistory) backToHistory.addEventListener("click", () => {
-    // Save trip back to past trips
-    if (state.trip) {
-      state.pastTrips.push({ ...state.trip, expenses: state.expenses, endedAt: Date.now() });
-    }
-    state.trip = null;
-    state.expenses = [];
-    state.isHistorical = false;
-    state.editingEnabled = false;
-    persist(); state.currentView = "history"; render();
+  const exportExcelTop = document.getElementById("export-excel-top");
+  if (exportExcelTop) exportExcelTop.addEventListener("click", async () => {
+    exportExcelTop.textContent = "Generating...";
+    try { await generateExcel(); } catch(e) { console.error("Excel error:", e); }
+    exportExcelTop.textContent = "Export Excel";
   });
 
   const input = document.getElementById("expense-input");
@@ -1775,7 +1803,14 @@ function renderDashboard() {
     byCatSgd[e.category] = (byCatSgd[e.category]||0) + sgd;
   });
 
-  let h = '<div class="dashboard">';
+  let h = '';
+  // Reopened trips land on this view — surface Export at the top (12 Jul UX fix)
+  if (state.isHistorical) {
+    h += '<div style="padding:12px 16px;display:flex;gap:8px;border-bottom:1px solid var(--border);">';
+    h += '<button class="export-btn" id="export-excel-top-dash" style="flex:1;">Export Excel</button>';
+    h += '</div>';
+  }
+  h += '<div class="dashboard">';
   const isGroup = isGroupTrip(state.trip);
 
   // Totals - prominent, two-column layout
@@ -1908,6 +1943,14 @@ function renderDashboard() {
 
   h += '</div>';
   document.getElementById("view-dashboard").innerHTML = h;
+
+  // Top export handler (historical trips)
+  const exportTopDash = document.getElementById("export-excel-top-dash");
+  if (exportTopDash) exportTopDash.addEventListener("click", async () => {
+    exportTopDash.textContent = "Generating...";
+    try { await generateExcel(); } catch(e) { console.error("Excel error:", e); }
+    exportTopDash.textContent = "Export Excel";
+  });
 
   // Settlement copy handler
   document.getElementById("copy-settlement")?.addEventListener("click", () => {
@@ -2138,6 +2181,9 @@ function renderHistory() {
     el.addEventListener("click", () => {
       const pt = state.pastTrips.find(p=>p.id===el.dataset.load);
       if (pt) {
+        // 12 Jul fix: park whatever trip is currently open BEFORE loading this
+        // one. Previously the open trip was silently overwritten and lost.
+        parkActiveTrip();
         state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, groupSize:pt.groupSize||1, createdAt:pt.createdAt };
         state.expenses = pt.expenses || [];
         state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
