@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com wss://*.firebaseio.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com wss://*.firebaseio.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self';">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripExpense">
 <title>TripExpense</title>
@@ -67,7 +67,7 @@ input[type="number"] { -moz-appearance: textfield; }
 
 /* Nav */
 .nav { display: flex; border-bottom: 1px solid var(--border); }
-.nav button { flex: 1; padding: 10px 0; background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid transparent; }
+.nav button { flex: 1; padding: 14px 0; background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid transparent; }
 .nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Quick Entry */
@@ -156,9 +156,9 @@ input[type="number"] { -moz-appearance: textfield; }
 .total-value { font-size: 18px; font-weight: 700; color: #fff; }
 .total-pending { font-size: 11px; color: var(--danger); margin-top: 6px; font-style: italic; }
 .total-entries { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
-.banner-header { display: grid; grid-template-columns: 1fr 110px 110px; padding: 0 0 8px; border-bottom: 1px solid rgba(255,255,255,0.2); margin-bottom: 8px; }
+.banner-header { display: grid; grid-template-columns: 1fr minmax(70px, 110px) minmax(70px, 110px); padding: 0 0 8px; border-bottom: 1px solid rgba(255,255,255,0.2); margin-bottom: 8px; }
 .banner-col-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.6); text-align: right; }
-.banner-row { display: grid; grid-template-columns: 1fr 110px 110px; padding: 7px 0; align-items: baseline; }
+.banner-row { display: grid; grid-template-columns: 1fr minmax(70px, 110px) minmax(70px, 110px); padding: 7px 0; align-items: baseline; }
 .banner-row-label { font-size: 17px; color: #fff; font-weight: 600; }
 .banner-row-label.dim { color: rgba(255,255,255,0.55); font-size: 15px; }
 .banner-val { font-size: 17px; font-weight: 700; color: #fff; text-align: right; }
@@ -267,7 +267,7 @@ input[type="number"] { -moz-appearance: textfield; }
 .user-info.online { color: var(--success); }
 .user-info.offline { color: var(--danger); }
 .signout-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; }
-.sync-btn { background: none; border: 1px solid var(--border); color: var(--accent); font-size: 14px; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; flex-shrink: 0; line-height: 26px; text-align: center; padding: 0; }
+.sync-btn { background: none; border: 1px solid var(--border); color: var(--accent); font-size: 16px; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; flex-shrink: 0; line-height: 34px; text-align: center; padding: 0; }
 .sync-btn:active { background: var(--accent-dim); }
 .last-sync { font-size: 9px; color: var(--text-muted); flex: 1; text-align: right; }
 
@@ -339,6 +339,13 @@ input[type="number"] { -moz-appearance: textfield; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" integrity="sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // ─── Data ──────────────────────────────────────────────
+// Frame-buster: frame-ancestors CSP requires an HTTP header, which GitHub
+// Pages cannot set — this is the best available substitute (12 Jul).
+if (window.top !== window.self) {
+  try { window.top.location.replace(window.location.href); }
+  catch (e) { document.documentElement.innerHTML = ""; }
+}
+
 const DEFAULT_CARDS = [
   { id:"1", name:"Amaze", shortcut:"amaze" },
   { id:"2", name:"Chocolate Finance", shortcut:"cf" },
@@ -394,6 +401,7 @@ let state = {
   lastSyncAt: null,
 };
 const deleteTimers = {};
+let onboardingQueued = false; // first-run tutorial shown at most once per load
 
 // ─── Storage ───────────────────────────────────────────
 let currentUser = null;
@@ -429,11 +437,36 @@ function showStorageWarning() {
   });
 }
 
+// Persistent, dismissible banner for sync-safety events (12 Jul): these mean
+// "your data is not reaching the cloud" and were previously shown only as
+// 9px status text for 3 seconds. Message set via textContent (user data safe).
+let syncWarningShown = false;
+function showSyncWarning(msg) {
+  showSyncStatus(msg);
+  if (syncWarningShown) {
+    const m = document.getElementById("sync-warning-msg");
+    if (m) m.textContent = msg;
+    return;
+  }
+  syncWarningShown = true;
+  const bar = document.createElement("div");
+  bar.id = "sync-warning";
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2000;background:#7a4a1f;color:#fff;font-size:12px;padding:10px 14px;text-align:center;line-height:1.4;";
+  bar.innerHTML = '<span id="sync-warning-msg"></span> <button id="sync-warning-close" style="margin-left:8px;background:none;border:1px solid #fff;border-radius:4px;color:#fff;font-size:11px;padding:2px 8px;cursor:pointer;">Dismiss</button>';
+  document.body.appendChild(bar);
+  const m = document.getElementById("sync-warning-msg");
+  if (m) m.textContent = msg;
+  document.getElementById("sync-warning-close")?.addEventListener("click", () => {
+    bar.remove();
+    syncWarningShown = false;
+  });
+}
+
 // ─── Sync safety (added 2026-07-12 after the 10 Jul data-loss incident) ───
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071201;
+const APP_BUILD = 2026071203;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -463,6 +496,12 @@ function syncGuard(cloud) {
   const localExpIds = new Set();
   Object.values(localTrips).forEach(t => t.ids.forEach(id => localExpIds.add(id)));
   let risky = ((cloud.trip && cloud.trip.id) || null) !== ((state.trip && state.trip.id) || null);
+
+  // Cards guard (12 Jul): cards were previously covered by no guard at all —
+  // a restore with cards:[] could wipe them cloud-wide.
+  if ((cloud.cards || []).length > 0 && (!state.cards || state.cards.length === 0)) {
+    return { block: "all payment cards would be wiped", risky: true };
+  }
 
   for (const tid of Object.keys(cloudTrips)) {
     const ct = cloudTrips[tid];
@@ -538,8 +577,8 @@ async function saveToFirebase() {
       // this server-side too; this check just gives a clear message.
       if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
         console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
-        showSyncStatus("App outdated — refresh this tab");
-        return;
+        showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
+        return false;
       }
 
       // Guard 1: block if local has significantly fewer TOTAL entries than cloud (>50% loss)
@@ -547,8 +586,8 @@ async function saveToFirebase() {
       const localTotal = state.expenses.length + state.pastTrips.reduce((s, pt) => s + (pt.expenses || []).length, 0);
       if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) {
         console.error(`SYNC BLOCKED: Local total ${localTotal} entries, cloud total ${cloudTotal}. Refusing to overwrite.`);
-        showSyncStatus("Sync blocked — data mismatch");
-        return;
+        showSyncWarning("Sync blocked — this device has much less data than the cloud. Tap ⟳ to merge first.");
+        return false;
       }
 
       // Guard 2: whole-trip-loss + per-trip count/SGD regression
@@ -556,8 +595,8 @@ async function saveToFirebase() {
       const g = syncGuard(cloud);
       if (g.block) {
         console.error(`SYNC BLOCKED: ${g.block}. Tap ⟳ Sync to merge with cloud first.`);
-        showSyncStatus("Sync blocked — " + g.block);
-        return;
+        showSyncWarning("Sync blocked — " + g.block + ". Tap ⟳ to merge with cloud first.");
+        return false;
       }
 
       // Snapshot cloud before overwriting: always before a risky (data-reducing)
@@ -579,6 +618,7 @@ async function saveToFirebase() {
     });
     state.lastSyncAt = Date.now();
     saveLocal("last-sync-at", state.lastSyncAt);
+    return true;
   } catch(e) {
     console.error("Firebase save error:", e);
     if (!navigator.onLine) {
@@ -586,10 +626,11 @@ async function saveToFirebase() {
     } else if (e && e.code === "permission-denied") {
       // Rules rejected the write — a newer build wrote the doc after our read,
       // or this tab's code predates the appBuild rules. Either way: refresh.
-      showSyncStatus("Write rejected — refresh this tab");
+      showSyncWarning("Cloud rejected the write — refresh this tab to get the latest version.");
     } else {
       showSyncStatus("Sync failed");
     }
+    return false;
   }
 }
 
@@ -623,17 +664,22 @@ function cleanMisplacedExpenses() {
   console.log(`Data integrity: moving ${misplaced.length} misplaced expenses to past trips`);
   const byCur = {};
   misplaced.forEach(e => { (byCur[e.currency] = byCur[e.currency] || []).push(e); });
+  const rehomedIds = new Set();
   Object.entries(byCur).forEach(([cur, exps]) => {
-    const pt = state.pastTrips.find(p => p.currency === cur);
-    if (pt) {
-      const merged = {};
-      (pt.expenses || []).forEach(e => { merged[e.id] = e; });
-      exps.forEach(e => { merged[e.id] = e; });
-      pt.expenses = Object.values(merged);
+    let pt = state.pastTrips.find(p => p.currency === cur);
+    if (!pt) {
+      // 12 Jul fix: never discard orphans — create a recovery trip instead.
+      // (Previously these were removed from state.expenses and lost forever.)
+      pt = { id: genId(), name: "Recovered " + cur, currency: cur, type: "personal", groupSize: 1, createdAt: Date.now(), endedAt: Date.now(), expenses: [] };
+      state.pastTrips.push(pt);
+      console.warn(`Data integrity: created recovery trip for ${exps.length} orphaned ${cur} expenses`);
     }
+    const merged = {};
+    (pt.expenses || []).forEach(e => { merged[e.id] = e; });
+    exps.forEach(e => { merged[e.id] = e; rehomedIds.add(e.id); });
+    pt.expenses = Object.values(merged);
   });
-  const misplacedIds = new Set(misplaced.map(e => e.id));
-  state.expenses = state.expenses.filter(e => !misplacedIds.has(e.id));
+  state.expenses = state.expenses.filter(e => !rehomedIds.has(e.id));
 }
 
 // Merge duplicate past trips that share the same name + currency (keep richer expense set)
@@ -681,9 +727,9 @@ function parkActiveTrip() {
       const ex = merged[e.id];
       if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
     });
-    state.pastTrips[idx] = { ...existing, ...t, expenses: Object.values(merged), endedAt: existing.endedAt || Date.now() };
+    state.pastTrips[idx] = { ...existing, ...t, expenses: Object.values(merged), endedAt: existing.endedAt || t.endedAt || Date.now() };
   } else {
-    state.pastTrips.push({ ...t, expenses: exps, endedAt: Date.now() });
+    state.pastTrips.push({ ...t, expenses: exps, endedAt: t.endedAt || Date.now() });
   }
   state.trip = null;
   state.expenses = [];
@@ -722,7 +768,7 @@ async function manualSync() {
       // than the one that last wrote the cloud doc.
       if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
         console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
-        showSyncStatus("App outdated — refresh this tab");
+        showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
         return;
       }
 
@@ -750,9 +796,19 @@ async function manualSync() {
       (cloud.pastTrips || []).forEach(pt => {
         const existing = mergedPastMap[pt.id];
         if (!existing) { mergedPastMap[pt.id] = pt; return; }
-        const existingTime = existing.endedAt || existing.createdAt || 0;
-        const cloudTime = pt.endedAt || pt.createdAt || 0;
-        if (cloudTime >= existingTime) mergedPastMap[pt.id] = pt;
+        // 12 Jul fix: merge same-id past trips at the EXPENSE level (union by
+        // id, newer updatedAt wins). The old whole-object swap on endedAt
+        // silently reverted edits made to historical trips, since editing a
+        // past trip's expenses never changes its endedAt.
+        const merged = {};
+        (existing.expenses || []).forEach(e => { merged[e.id] = e; });
+        (pt.expenses || []).forEach(e => {
+          const ex = merged[e.id];
+          if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
+        });
+        const cloudNewer = (pt.endedAt || pt.createdAt || 0) >= (existing.endedAt || existing.createdAt || 0);
+        const base = cloudNewer ? { ...existing, ...pt } : { ...pt, ...existing };
+        mergedPastMap[pt.id] = { ...base, expenses: Object.values(merged) };
       });
       state.pastTrips = Object.values(mergedPastMap);
 
@@ -817,6 +873,7 @@ async function manualSync() {
     saveLocal("trip", state.trip);
     saveLocal("expenses", state.expenses);
     saveLocal("cards", state.cards);
+    saveLocal("deleted-card-ids", state.deletedCardIds);
     saveLocal("past-trips", state.pastTrips);
     await saveToFirebase();
     // Only render if user isn't actively typing or editing
@@ -931,7 +988,10 @@ function parseInput(text, cards, trip) {
 
   return { amount:foreignAmount, sgdAmount:sgdAmount, card:foundCard, description:desc, category:detectCategory(desc), parsedDate:parsedDate, isSgdOnly:isSgdOnly };
 }
-function esc(s) { const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+// Escapes &, <, > via textContent, plus quotes — esc() output is used inside
+// double-quoted HTML attributes (e.g. the edit form's value="..."), where
+// unescaped quotes allowed attribute-breakout XSS (fixed 12 Jul).
+function esc(s) { const d=document.createElement("div"); d.textContent=s; return d.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 
 // Shared expense helpers
 function getGroupSize(trip) { return (trip && trip.groupSize) || 1; }
@@ -964,7 +1024,7 @@ function render() {
   const navEl = document.getElementById("nav");
   if (t) {
     navEl.innerHTML = '';
-    const tabs = state.isHistorical ? ["expenses","dashboard","history"] : ["expenses","dashboard","cards","history"];
+    const tabs = ["expenses","dashboard","cards","history"]; // 12 Jul: Settings reachable in all states (Backup/sync shouldn't need a live trip)
     tabs.forEach(v => {
       const label = v === "dashboard" ? "Summary" : v === "cards" ? "Settings" : v.charAt(0).toUpperCase() + v.slice(1);
       const btn = document.createElement("button");
@@ -984,8 +1044,8 @@ function render() {
     });
   } else {
     navEl.innerHTML = '';
-    ["history","setup"].forEach(v => {
-      const label = v === "setup" ? "New Trip" : "History";
+    ["history","setup","cards"].forEach(v => {
+      const label = v === "setup" ? "New Trip" : v === "cards" ? "Settings" : "History";
       const btn = document.createElement("button");
       btn.textContent = label;
       btn.dataset.view = v;
@@ -999,12 +1059,19 @@ function render() {
     const el = document.getElementById("view-"+v);
     if (el) el.classList.toggle("hidden", state.currentView !== v);
   });
-  if (!t && !["setup","history"].includes(state.currentView)) { state.currentView = "history"; render(); return; }
+  if (!t && !["setup","history","cards"].includes(state.currentView)) { state.currentView = "history"; render(); return; }
   if (state.currentView === "expenses") renderExpenses();
   else if (state.currentView === "dashboard") renderDashboard();
   else if (state.currentView === "cards") renderCards();
   else if (state.currentView === "history") renderHistory();
   else if (state.currentView === "setup") renderSetup();
+
+  // First-run tutorial: the first time a live trip's entry view renders,
+  // so every step describes UI that is actually on screen (12 Jul fix).
+  if (!onboardingQueued && state.currentView === "expenses" && state.trip && !state.isHistorical && !loadLocal("onboarded", false)) {
+    onboardingQueued = true;
+    setTimeout(showOnboarding, 400);
+  }
 }
 
 function renderExpenses() {
@@ -1018,16 +1085,15 @@ function renderExpenses() {
   let html = '';
   const isReadOnly = state.isHistorical && !state.editingEnabled;
 
-  // Edit Trip / Back to History bar for historical trips
+  // Unlock Editing bar for historical trips
   if (state.isHistorical) {
     html += '<div style="padding:12px 16px;display:flex;gap:8px;border-bottom:1px solid var(--border);">';
     if (!state.editingEnabled) {
-      html += '<button class="export-btn" id="edit-trip-btn" style="flex:1;">Edit Trip</button>';
+      html += '<button class="export-btn" id="edit-trip-btn" style="flex:1;">Unlock Editing</button>';
     } else {
-      html += '<div style="flex:1;font-size:12px;color:var(--warn);display:flex;align-items:center;">Editing enabled</div>';
+      html += '<div style="flex:1;font-size:12px;color:var(--warn);display:flex;align-items:center;">Editing unlocked — tap an entry to edit</div>';
       html += '<button class="export-btn" id="lock-trip-btn" style="flex:0 0 auto;padding:8px 16px;">Lock</button>';
     }
-    html += '<button class="export-btn" id="export-excel-top" style="flex:1;">Export Excel</button>';
     html += '</div>';
   }
 
@@ -1035,7 +1101,7 @@ function renderExpenses() {
   if (!isReadOnly) {
     html += '<div class="quick-entry">';
     html += '<div class="input-row">';
-    html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 15 lunch visa" ${state.pendingExpense ? 'disabled' : ''}>`;
+    html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 15 lunch cash" ${state.pendingExpense ? 'disabled' : ''}>`;
     html += '</div>';
     // Claim/Shared prompt
     if (state.pendingExpense) {
@@ -1093,7 +1159,7 @@ function renderExpenses() {
         if (e.cardName) html += `<span class="tag">${esc(e.cardName)}</span>`;
         html += `<span class="tag-cat">${esc(e.category)}</span>`;
         if (e.claimable) html += '<span class="tag-claim">Claim</span>';
-        if (e.shared) html += `<span class="tag-shared">÷${e.splitCount || getGroupSize(state.trip)}</span>`;
+        if (e.shared) html += `<span class="tag-shared">÷${Number(e.splitCount) || getGroupSize(state.trip)}</span>`;
         html += '</div></div>';
         html += '<div class="expense-right">';
         if (isSgdOnlyEntry(e)) {
@@ -1117,13 +1183,10 @@ function renderExpenses() {
     }
   }
 
-  // Bottom actions
-  if (state.expenses.length > 0) {
+  // Bottom actions (Export Excel moved to Summary view — 12 Jul UX)
+  if (state.expenses.length > 0 && !state.isHistorical) {
     html += '<div class="bottom-actions">';
-    html += '<button class="export-btn" id="export-excel">Export Excel</button>';
-    if (!state.isHistorical) {
-      html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
-    }
+    html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
     html += '</div>';
   }
 
@@ -1137,8 +1200,8 @@ function renderEditForm(e) {
   html += `<input class="edit-input" id="edit-date" type="date" value="${e.date}">`;
   const amtStep = (state.trip && ZERO_DECIMAL.has(state.trip.currency)) ? "1" : "0.01";
   html += `<input class="edit-input" id="edit-desc" value="${esc(e.description)}" placeholder="Description">`;
-  html += `<input class="edit-input" id="edit-amount" type="number" step="${amtStep}" value="${e.amount}" placeholder="Amount">`;
-  html += `<input class="edit-input" id="edit-sgd" type="number" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
+  html += `<input class="edit-input" id="edit-amount" type="number" inputmode="decimal" step="${amtStep}" value="${e.amount}" placeholder="Amount">`;
+  html += `<input class="edit-input" id="edit-sgd" type="number" inputmode="decimal" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
   html += '<select class="edit-select" id="edit-card">';
   html += '<option value="">No card</option>';
   [...state.cards].sort((a,b) => a.name.localeCompare(b.name)).forEach(c => { html += `<option value="${c.id}" ${e.card===c.id?'selected':''}>${esc(c.name)}</option>`; });
@@ -1163,7 +1226,7 @@ function renderEditForm(e) {
     html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">Split ÷</label><select class="edit-select" id="edit-split-count" style="width:60px;">`;
     for (let i = 2; i <= 5; i++) html += `<option value="${i}" ${gs===i?'selected':''}>${i}</option>`;
     html += `</select></div>`;
-    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" step="${shareStep}" value="${shareVal}" style="width:80px;"></div>`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" inputmode="decimal" step="${shareStep}" value="${shareVal}" style="width:80px;"></div>`;
     html += `</div>`;
   }
   html += '</div>';
@@ -1180,22 +1243,16 @@ function bindExpenseEvents() {
   // Historical trip buttons
   const editTripBtn = document.getElementById("edit-trip-btn");
   if (editTripBtn) editTripBtn.addEventListener("click", () => {
-    if (confirm("Are you sure you want to edit this trip?")) {
-      state.editingEnabled = true;
-      render();
-    }
+    // Non-destructive unlock — no confirm needed (12 Jul: the friction was
+    // inverted; destructive End Trip had none, harmless unlock had one)
+    state.editingEnabled = true;
+    render();
   });
   const lockTripBtn = document.getElementById("lock-trip-btn");
   if (lockTripBtn) lockTripBtn.addEventListener("click", () => {
     state.editingEnabled = false;
     state.editingId = null;
     render();
-  });
-  const exportExcelTop = document.getElementById("export-excel-top");
-  if (exportExcelTop) exportExcelTop.addEventListener("click", async () => {
-    exportExcelTop.textContent = "Generating...";
-    try { await generateExcel(); } catch(e) { console.error("Excel error:", e); }
-    exportExcelTop.textContent = "Export Excel";
   });
 
   const input = document.getElementById("expense-input");
@@ -1297,18 +1354,10 @@ function bindExpenseEvents() {
     const splitSelect = document.getElementById("edit-split-count");
     if (splitSelect) splitSelect.addEventListener("change", recalcShare);
   }
-  const exportExcel = document.getElementById("export-excel");
-  if (exportExcel) exportExcel.addEventListener("click", async () => {
-    exportExcel.textContent = "Generating...";
-    try { await generateExcel(); } catch(e) { console.error("Excel error:", e); }
-    exportExcel.textContent = "Export Excel";
-  });
   const endTrip = document.getElementById("end-trip");
   if (endTrip) endTrip.addEventListener("click", () => {
-    if (state.trip) {
-      state.pastTrips.push({ ...state.trip, expenses: state.expenses, endedAt: Date.now() });
-    }
-    state.trip = null; state.expenses = []; 
+    if (!confirm("End this trip? It moves to History — you can reopen it anytime.")) return;
+    parkActiveTrip(); // merge-by-id, no duplicate trips (12 Jul fix)
     persist(); state.currentView = "history"; render();
   });
 }
@@ -1317,7 +1366,13 @@ function updatePreview(val) {
   const prev = document.getElementById("preview");
   if (!prev || state.pendingExpense) return;
   const p = parseInput(val, state.cards, state.trip);
-  if (!p || (!p.amount && !p.isSgdOnly)) { prev.innerHTML = ''; return; }
+  if (!p || (!p.amount && !p.isSgdOnly)) {
+    // 12 Jul: unparseable non-empty input used to fail silently
+    prev.innerHTML = (val && val.trim())
+      ? '<span class="preview-desc" style="color:var(--text-muted);">Start with an amount — e.g. "15 coffee cash"</span>'
+      : '';
+    return;
+  }
   state.lastPreview = p;
   const c = state.trip.currency;
   let h = '';
@@ -1332,7 +1387,7 @@ function updatePreview(val) {
     }
   }
   if (p.card) h += `<span class="preview-card">${esc(p.card.name)}</span>`;
-  h += `<span class="preview-cat">${p.category}</span>`;
+  h += `<span class="preview-cat">${esc(p.category)}</span>`;
   if (p.description) h += `<span class="preview-desc">${esc(p.description)}</span>`;
   h += `<button class="preview-submit" id="preview-submit">✓</button>`;
   prev.innerHTML = h;
@@ -1354,7 +1409,7 @@ function updatePreview(val) {
       h2 += `<span class="preview-sgd">SGD ${money(lp.sgdAmount, "SGD")}</span>`;
       h2 += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
       if (lp.card) h2 += `<span class="preview-card">${esc(lp.card.name)}</span>`;
-      h2 += `<span class="preview-cat">${lp.category}</span>`;
+      h2 += `<span class="preview-cat">${esc(lp.category)}</span>`;
       if (lp.description) h2 += `<span class="preview-desc">${esc(lp.description)}</span>`;
       h2 += `<button class="preview-submit" id="preview-submit">✓</button>`;
       prev.innerHTML = h2;
@@ -1442,7 +1497,7 @@ function undoDelete(id) {
 async function generateExcel() {
   const t = state.trip;
   const c = t.currency;
-  const exps = [...state.expenses].sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0));
+  const exps = state.expenses.filter(e => !state.deletedIds[e.id]).sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0)); // 12 Jul: exclude undo-window deletes
   const isWork = t.type === "work";
   const isGroup = isGroupTrip(t);
   const isZero = ZERO_DECIMAL.has(c);
@@ -1804,8 +1859,8 @@ function renderDashboard() {
   });
 
   let h = '';
-  // Reopened trips land on this view — surface Export at the top (12 Jul UX fix)
-  if (state.isHistorical) {
+  // Export lives on the Summary view only (12 Jul UX) — for all trips
+  if (state.expenses.length > 0) {
     h += '<div style="padding:12px 16px;display:flex;gap:8px;border-bottom:1px solid var(--border);">';
     h += '<button class="export-btn" id="export-excel-top-dash" style="flex:1;">Export Excel</button>';
     h += '</div>';
@@ -1920,18 +1975,19 @@ function renderDashboard() {
         const dayShared = sharedExps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
         h += `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-top:8px;">${formatDate(date)}</div>`;
         dayShared.forEach(e => {
-          const gs = e.splitCount || getGroupSize(state.trip);
+          const gs = Number(e.splitCount) || getGroupSize(state.trip);
           const myShare = getMyShare(e, state.trip);
           const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
           const eachShare = Math.round(dispAmt / gs * 100) / 100;
           const isCustom = e.myShare != null;
-          const prefix = isSgdOnlyEntry(e) ? "S$" : "$";
+          // 12 Jul: currency codes, not "$" — "$12000" on a JPY trip was misleading
+          const dispCur = isSgdOnlyEntry(e) ? "SGD" : c;
           h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="font-size:11px;">${esc(e.description)}</span>`;
-          h += `<span class="breakdown-val" style="font-size:11px;">${prefix}${money(dispAmt, isSgdOnlyEntry(e) ? "SGD" : c)}</span>`;
+          h += `<span class="breakdown-val" style="font-size:11px;">${esc(dispCur)} ${money(dispAmt, dispCur)}</span>`;
           if (isCustom) {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: ${prefix}${money(myShare, isSgdOnlyEntry(e) ? "SGD" : c)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: ${esc(dispCur)} ${money(myShare, dispCur)}</span>`;
           } else {
-            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = ${prefix}${money(eachShare, isSgdOnlyEntry(e) ? "SGD" : c)}</span>`;
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = ${esc(dispCur)} ${money(eachShare, dispCur)}</span>`;
           }
           h += `</div>`;
         });
@@ -1944,12 +2000,19 @@ function renderDashboard() {
   h += '</div>';
   document.getElementById("view-dashboard").innerHTML = h;
 
-  // Top export handler (historical trips)
+  // Top export handler (all trips)
   const exportTopDash = document.getElementById("export-excel-top-dash");
   if (exportTopDash) exportTopDash.addEventListener("click", async () => {
     exportTopDash.textContent = "Generating...";
-    try { await generateExcel(); } catch(e) { console.error("Excel error:", e); }
-    exportTopDash.textContent = "Export Excel";
+    try {
+      await generateExcel();
+      exportTopDash.textContent = "Export Excel";
+    } catch(e) {
+      // 12 Jul: failures were console-only — user saw the button flicker
+      console.error("Excel error:", e);
+      exportTopDash.textContent = "Export failed — tap to retry";
+      setTimeout(() => { exportTopDash.textContent = "Export Excel"; }, 4000);
+    }
   });
 
   // Settlement copy handler
@@ -2020,13 +2083,13 @@ function renderCards() {
     const cur = state.trip.currency;
     const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
     if (cashEntries.length > 0) {
-    h += `<div class="backup-section"><h3 class="section-title">SGD → ${cur} (Cash)</h3>`;
-    h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${cur} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
+    h += `<div class="backup-section"><h3 class="section-title">SGD → ${esc(cur)} (Cash)</h3>`;
+    h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${esc(cur)} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
     h += '<div style="display:flex;flex-direction:column;gap:12px;">';
-    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">${cur} received</label><input class="edit-input" id="cash-foreign" type="number" step="0.01" placeholder="e.g. 500000" style="flex:1;min-width:0;"></div>`;
-    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" step="0.01" placeholder="e.g. 540" style="flex:1;min-width:0;"></div>`;
+    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">${esc(cur)} received</label><input class="edit-input" id="cash-foreign" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 500000" style="flex:1;min-width:0;"></div>`;
+    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 540" style="flex:1;min-width:0;"></div>`;
     h += '</div>';
-    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${cashEntries.length} Cash Entries</button>`;
+    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${Number(cashEntries.length)} Cash Entries</button>`;
     h += '<div id="cash-rate-msg" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>';
     h += '</div>';
     }
@@ -2039,7 +2102,7 @@ function renderCards() {
     h += `<button class="type-btn ${state.syncMode==='auto'?'active':''}" id="sync-auto">Auto Sync</button>`;
     h += `<button class="type-btn ${state.syncMode==='manual'?'active':''}" id="sync-manual">Manual Sync</button>`;
     h += '</div>';
-    h += `<div style="font-size:11px;color:var(--text-muted);">${state.syncMode==='auto'?'Syncs automatically after every edit when signed in.':'Only syncs when you tap the ⟳ button. Good for limited data.'}</div>`;
+    h += `<div style="font-size:11px;color:var(--text-muted);">${state.syncMode==='auto'?'Syncs automatically after every edit when signed in.':'Only syncs when you tap the ⟳ button at the top of the screen. Good for limited data plans.'}</div>`;
     h += '</div>';
   }
 
@@ -2121,16 +2184,28 @@ function renderCards() {
       if (data.cards && !Array.isArray(data.cards)) throw new Error("Cards must be an array");
       if (data.pastTrips && !Array.isArray(data.pastTrips)) throw new Error("Past trips must be an array");
       if (data.trip && typeof data.trip !== "object") throw new Error("Trip must be an object");
-      // Validate expense entries have required fields
+      // Validate expense entries have required fields (12 Jul: type-check id +
+      // date — a numeric date passed truthiness but crashed the expenses view)
       if (data.expenses) {
         for (const e of data.expenses) {
-          if (!e.id || !e.date || typeof e.amount !== "number") throw new Error("Invalid expense entry: " + (e.id || "unknown"));
+          if (!e.id || typeof e.id !== "string" || typeof e.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || typeof e.amount !== "number") throw new Error("Invalid expense entry: " + (e.id || "unknown"));
         }
       }
-      // Validate cards have required fields
+      // Validate cards have required fields; empty array would wipe cards everywhere
       if (data.cards) {
+        if (data.cards.length === 0) throw new Error("Backup contains no cards — refusing to wipe existing cards");
         for (const c of data.cards) {
           if (!c.id || !c.name || !c.shortcut) throw new Error("Invalid card entry: " + (c.id || "unknown"));
+        }
+      }
+      // Validate past trips + their expenses (12 Jul: were entirely unvalidated)
+      if (data.pastTrips) {
+        for (const pt of data.pastTrips) {
+          if (!pt.id || !pt.name || typeof pt.currency !== "string") throw new Error("Invalid past trip: " + (pt.name || pt.id || "unknown"));
+          if (pt.expenses && !Array.isArray(pt.expenses)) throw new Error("Past trip expenses must be an array: " + pt.name);
+          for (const e of (pt.expenses || [])) {
+            if (!e.id || typeof e.date !== "string" || typeof e.amount !== "number") throw new Error("Invalid expense in past trip: " + pt.name);
+          }
         }
       }
       // Size check — reject if over 900KB (Firestore limit is 1MB)
@@ -2168,10 +2243,10 @@ function renderCards() {
 function renderHistory() {
   let h = '<div style="padding:16px"><h3 class="section-title">Past Trips</h3>';
   if (!state.pastTrips.length) {
-    h += '<div class="empty">No past trips.</div>';
+    h += '<div class="empty">No past trips yet — start one under New Trip.</div>';
   } else {
     state.pastTrips.forEach(pt => {
-      h += `<div class="past-trip"><div><div class="past-trip-name">${esc(pt.name)}</div><div class="past-trip-meta">${esc(pt.currency)} · ${pt.expenses?.length||0} expenses · ${pt.type}</div></div><button class="load-btn" data-load="${pt.id}">Reopen</button></div>`;
+      h += `<div class="past-trip"><div><div class="past-trip-name">${esc(pt.name)}</div><div class="past-trip-meta">${esc(pt.currency)} · ${pt.expenses?.length||0} expenses · ${esc(pt.type ? pt.type.charAt(0).toUpperCase()+pt.type.slice(1) : "")}</div></div><button class="load-btn" data-load="${pt.id}">Reopen</button></div>`;
     });
   }
   h += '</div>';
@@ -2184,7 +2259,10 @@ function renderHistory() {
         // 12 Jul fix: park whatever trip is currently open BEFORE loading this
         // one. Previously the open trip was silently overwritten and lost.
         parkActiveTrip();
-        state.trip = { id:pt.id, name:pt.name, currency:pt.currency, type:pt.type, groupSize:pt.groupSize||1, createdAt:pt.createdAt };
+        // Carry the FULL trip object (dateFormat, endedAt, etc.) — 12 Jul fix:
+        // dropping fields corrupted date parsing and rewrote endedAt on re-park.
+        const { expenses: _reopenExps, ...tripMeta } = pt;
+        state.trip = { ...tripMeta, groupSize: pt.groupSize || 1 };
         state.expenses = pt.expenses || [];
         state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
         state.isHistorical = true;
@@ -2218,7 +2296,9 @@ function renderSetup() {
   h += '<div class="type-toggle"><button class="type-btn active" data-gs="1">Solo</button><button class="type-btn" data-gs="2">2</button><button class="type-btn" data-gs="3">3</button><button class="type-btn" data-gs="4">4</button><button class="type-btn" data-gs="5">5</button></div></div>';
   h += '<label class="setup-label">Date Format</label>';
   h += '<div class="type-toggle"><button class="type-btn active" id="fmt-ddmm" data-fmt="dd/mm">DD/MM</button><button class="type-btn" id="fmt-mmdd" data-fmt="mm/dd">MM/DD</button></div>';
+  h += '<div style="font-size:11px;color:var(--text-muted);margin:-8px 0 16px;">Used when you type a date in an entry, e.g. "12/7 taxi".</div>';
   h += '<button class="setup-save" id="setup-save">Start Trip</button>';
+  h += '<div id="setup-error" style="font-size:12px;color:var(--danger);margin-top:8px;display:none;"></div>';
   h += '</div>';
   document.getElementById("view-setup").innerHTML = h;
 
@@ -2249,8 +2329,13 @@ function renderSetup() {
   document.getElementById("setup-save")?.addEventListener("click", () => {
     const name = document.getElementById("setup-name").value.trim();
     const cur = document.getElementById("setup-currency").value;
-    if (!name || !cur) return;
+    if (!name || !cur) {
+      const err = document.getElementById("setup-error");
+      if (err) { err.textContent = !name ? "Enter a trip name first." : "Choose a currency first."; err.style.display = ""; }
+      return;
+    }
     const gs = tripType === "personal" ? groupSize : 1;
+    parkActiveTrip(); // 12 Jul fix: never clobber a trip pulled in by background sync
     state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, groupSize:gs, createdAt:Date.now() };
     state.expenses = [];
     state.isHistorical = false;
@@ -2397,6 +2482,7 @@ function reorderExpense(draggedId, targetId, targetDate, insertAfter) {
 
   // Update date and sortOrder
   draggedExp.date = targetDate;
+  draggedExp.updatedAt = Date.now(); // 12 Jul fix: without this, next sync reverts the move
   filtered.forEach((e, i) => { e.sortOrder = i; });
   persist(); render();
 }
@@ -2406,6 +2492,7 @@ function moveExpenseToDate(draggedId, targetDate) {
   if (!draggedExp) return;
   const dateExps = state.expenses.filter(e => e.date === targetDate && e.id !== draggedId).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
   draggedExp.date = targetDate;
+  draggedExp.updatedAt = Date.now(); // 12 Jul fix: without this, next sync reverts the move
   draggedExp.sortOrder = dateExps.length ? Math.max(...dateExps.map(e => e.sortOrder||0)) + 1 : 0;
   persist(); render();
 }
@@ -2487,6 +2574,13 @@ document.getElementById("google-signin")?.addEventListener("click", async () => 
 document.getElementById("signout-btn")?.addEventListener("click", async () => {
   // Cancel any pending auto-save FIRST
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  // 12 Jul fix: flush unsynced changes before wiping local data. Previously a
+  // sign-out within the debounce window (or in manual mode) destroyed them.
+  let flushed = false;
+  if (navigator.onLine && currentUser) {
+    try { flushed = (await saveToFirebase()) === true; } catch(e) { flushed = false; }
+  }
+  if (!flushed && !confirm("Couldn't sync your latest changes to the cloud. Sign out anyway? Unsynced changes on this device will be lost.")) return;
   const { auth, signOut } = window.FB;
   await signOut(auth);
   // Clear sensitive data from localStorage
@@ -2657,10 +2751,10 @@ initAuth();
 
 // ─── Onboarding ───
 const ONBOARDING_STEPS = [
-  { icon: "✏️", title: "Type what you spent", text: "Just type naturally in one line:", example: "15 lunch visa", hint: "Amount, what it was, and which card. That's it." },
+  { icon: "✏️", title: "Type what you spent", text: "Just type naturally in one line:", example: "15 lunch cash", hint: "Amount, what it was, and which card (shortcuts in Settings). That's it." },
   { icon: "🌏", title: "Travelling overseas?", text: "Type two numbers — foreign first, then SGD:", example: "12000 dinner   18", hint: "Or just the foreign amount and fill SGD later. Home-currency expenses: add 'sgd'." },
   { icon: "📊", title: "See your spending", text: "Tap Summary for totals by day, card, and category — in both currencies.", example: "", hint: "Travelling with others? Split bills and track who owes you. Travelling for work? Track what's claimable." },
-  { icon: "📤", title: "Export anytime", text: "Tap Export for a formatted Excel file you can share or keep.", example: "", hint: "Your data stays on your device. Use Backup in Settings to move it between devices, or sign in (optional) to sync automatically." },
+  { icon: "📤", title: "Export anytime", text: "Tap Export Excel at the top of the Summary tab for a formatted file you can share or keep.", example: "", hint: "Your data stays on your device. Use Backup in Settings to move it between devices, or sign in (optional) to sync automatically." },
 ];
 let obIndex = 0;
 
@@ -2692,10 +2786,9 @@ document.getElementById("ob-next")?.addEventListener("click", () => {
 });
 document.getElementById("ob-skip")?.addEventListener("click", dismissOnboarding);
 
-// Show onboarding on first visit
-if (!loadLocal("onboarded", false)) {
-  setTimeout(showOnboarding, 400);
-}
+// 12 Jul: onboarding no longer fires at boot — it used to appear on top of the
+// auth screen, describing UI that didn't exist yet, then never show again.
+// It now triggers from render() the first time a live trip's entry view renders.
 </script>
 </body>
 </html>
