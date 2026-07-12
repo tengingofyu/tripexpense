@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com wss://*.firebaseio.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self';">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -346,24 +346,13 @@ if (window.top !== window.self) {
   catch (e) { document.documentElement.innerHTML = ""; }
 }
 
+// 12 Jul: generic defaults for new users (personal card lists live in each
+// user's saved data — defaults only apply when no cards exist yet).
 const DEFAULT_CARDS = [
-  { id:"1", name:"Amaze", shortcut:"amaze" },
-  { id:"2", name:"Chocolate Finance", shortcut:"cf" },
-  { id:"3", name:"Citibank Premier Miles", shortcut:"pm" },
-  { id:"4", name:"Citibank Prestige", shortcut:"prestige" },
-  { id:"5", name:"DBS Altitude Amex", shortcut:"altitude" },
-  { id:"6", name:"DBS WWMC", shortcut:"wwmc" },
-  { id:"7", name:"DBS Yuu", shortcut:"yuu" },
-  { id:"8", name:"UOB KrisFlyer", shortcut:"krisflyer" },
-  { id:"9", name:"UOB Ladies", shortcut:"ladies" },
-  { id:"10", name:"UOB PPV", shortcut:"ppv" },
-  { id:"11", name:"UOB PRVI", shortcut:"prvi" },
-  { id:"12", name:"UOB VS", shortcut:"vs" },
-  { id:"13", name:"YouTrip", shortcut:"youtrip" },
-  { id:"14", name:"Cash", shortcut:"cash" },
-  { id:"15", name:"Ryde", shortcut:"ryde" },
-  { id:"16", name:"Revo", shortcut:"revo" },
-  { id:"17", name:"Maribank", shortcut:"mari" },
+  { id:"1", name:"Cash", shortcut:"cash" },
+  { id:"2", name:"Visa", shortcut:"visa" },
+  { id:"3", name:"Mastercard", shortcut:"mc" },
+  { id:"4", name:"Amex", shortcut:"amex" },
 ];
 
 const CATEGORIES = [
@@ -466,7 +455,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071203;
+const APP_BUILD = 2026071204;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -2062,7 +2051,6 @@ function renderCards() {
   h += '<input class="shortcut-input" id="new-card-shortcut" placeholder="Shortcut">';
   h += '<button class="add-card-btn" id="add-card">Add</button>';
   h += '</div>';
-  h += '<button class="save-cards-btn" id="save-cards">Save Cards</button>';
   h += '</div>';
 
   // Group size (personal group trips)
@@ -2138,7 +2126,6 @@ function renderCards() {
     const s = document.getElementById("new-card-shortcut").value.trim().toLowerCase();
     if (n && s) { state.cards.push({ id:genId(), name:n, shortcut:s }); persist(); render(); }
   });
-  document.getElementById("save-cards")?.addEventListener("click", () => { persist(); const st = document.getElementById("backup-status"); if(st) { st.textContent="Cards saved!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2000); } });
 
   // Cash → SGD rate converter
   document.getElementById("apply-cash-rate")?.addEventListener("click", () => {
@@ -2296,7 +2283,7 @@ function renderSetup() {
   h += '<div class="type-toggle"><button class="type-btn active" data-gs="1">Solo</button><button class="type-btn" data-gs="2">2</button><button class="type-btn" data-gs="3">3</button><button class="type-btn" data-gs="4">4</button><button class="type-btn" data-gs="5">5</button></div></div>';
   h += '<label class="setup-label">Date Format</label>';
   h += '<div class="type-toggle"><button class="type-btn active" id="fmt-ddmm" data-fmt="dd/mm">DD/MM</button><button class="type-btn" id="fmt-mmdd" data-fmt="mm/dd">MM/DD</button></div>';
-  h += '<div style="font-size:11px;color:var(--text-muted);margin:-8px 0 16px;">Used when you type a date in an entry, e.g. "12/7 taxi".</div>';
+  h += '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.4;">Used when you type a date in an entry, e.g. "12/7 taxi".</div>';
   h += '<button class="setup-save" id="setup-save">Start Trip</button>';
   h += '<div id="setup-error" style="font-size:12px;color:var(--danger);margin-top:8px;display:none;"></div>';
   h += '</div>';
