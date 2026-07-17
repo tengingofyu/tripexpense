@@ -455,7 +455,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071204;
+const APP_BUILD = 2026071701;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -463,11 +463,22 @@ function collectTripStats(trip, expenses, pastTrips) {
   const add = (t, exps) => {
     if (!t || !t.id) return;
     const list = Array.isArray(exps) ? exps : [];
-    map[t.id] = {
+    const stats = {
       name: t.name || t.id,
       count: list.length,
       sgdCount: list.filter(e => e && e.sgdAmount).length,
       ids: list.map(e => e && e.id).filter(Boolean),
+    };
+    const prev = map[t.id];
+    if (!prev) { map[t.id] = stats; return; }
+    // 17 Jul fix: same trip id present twice (active + past — the zombie case).
+    // Keep the RICHER stats and the union of ids, so a duplicated trip can
+    // never mask a data regression from syncGuard.
+    map[t.id] = {
+      name: stats.name,
+      count: Math.max(prev.count, stats.count),
+      sgdCount: Math.max(prev.sgdCount, stats.sgdCount),
+      ids: [...new Set([...prev.ids, ...stats.ids])],
     };
   };
   add(trip, expenses);
@@ -640,8 +651,10 @@ function loadState() {
   state.pastTrips = loadLocal("past-trips", []);
   state.syncMode = loadLocal("sync-mode", "auto");
   state.lastSyncAt = loadLocal("last-sync-at", null);
+  const healMsg = resolveActivePastConflict();
   cleanMisplacedExpenses();
   dedupeTrips();
+  if (healMsg) setTimeout(() => showSyncWarning(healMsg), 800);
 }
 
 // Move expenses whose currency doesn't match the active trip to the correct past trip
@@ -669,6 +682,68 @@ function cleanMisplacedExpenses() {
     pt.expenses = Object.values(merged);
   });
   state.expenses = state.expenses.filter(e => !rehomedIds.has(e.id));
+}
+
+// ─── 17 Jul fix: zombie-trip resolver ───
+// A trip must never be BOTH the active trip and a past trip. This state arises
+// when a stale device (trip still active in its old localStorage) merges with
+// a cloud where that same trip was long since ended — the merge kept the local
+// active copy AND pulled the ended copy into pastTrips (the "China May 2026"
+// resurrection incident, 17 Jul). Resolve by recency:
+//   - If the ended (past) copy is at least as recent as the last local edit to
+//     the active copy, the ENDED state wins: fold active expenses into the past
+//     trip (never dropping an SGD value) and clear the active slot.
+//   - Otherwise the user genuinely reopened and edited it more recently than it
+//     was ended: the ACTIVE state wins — absorb the past copy into it.
+// Returns a message describing the heal (for a user-visible banner), or null.
+function resolveActivePastConflict() {
+  if (!state.trip || !state.trip.id) return null;
+  const idx = state.pastTrips.findIndex(p => p.id === state.trip.id);
+  if (idx < 0) return null;
+  const past = state.pastTrips[idx];
+
+  const mergeExps = (a, b) => { // union by id, newer wins, never lose SGD
+    const m = {};
+    (a || []).forEach(e => { m[e.id] = e; });
+    (b || []).forEach(e => {
+      const ex = m[e.id];
+      if (!ex) { m[e.id] = e; return; }
+      const newer = (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0) ? e : ex;
+      const other = newer === e ? ex : e;
+      if (!newer.sgdAmount && other.sgdAmount) newer.sgdAmount = other.sgdAmount;
+      m[e.id] = newer;
+    });
+    return Object.values(m);
+  };
+
+  // While the user is deliberately viewing/editing a reopened trip, keep it
+  // open: absorb the past copy into the active view. Back to History re-parks.
+  if (state.isHistorical) {
+    state.expenses = mergeExps(state.expenses, past.expenses);
+    state.pastTrips.splice(idx, 1);
+    return null; // not a heal-banner event — user is mid-workflow
+  }
+
+  const lastLocalEdit = Math.max(
+    state.trip.updatedAt || 0,
+    ...state.expenses.map(e => e.updatedAt || e.createdAt || 0),
+    0
+  );
+  const endedTime = past.endedAt || past.createdAt || 0;
+
+  if (endedTime >= lastLocalEdit) {
+    // Ended copy wins — fold active into past, clear active slot
+    const folded = mergeExps(past.expenses, state.expenses);
+    state.pastTrips[idx] = { ...past, expenses: folded };
+    state.trip = null;
+    state.expenses = [];
+    return `Fixed: "${past.name}" was showing an outdated copy — the completed version has been restored.`;
+  } else {
+    // Active copy is genuinely newer (real reopen + edits) — absorb past copy
+    state.expenses = mergeExps(state.expenses, past.expenses);
+    state.pastTrips.splice(idx, 1);
+    return null;
+  }
 }
 
 // Merge duplicate past trips that share the same name + currency (keep richer expense set)
@@ -854,9 +929,11 @@ async function manualSync() {
       }
     }
 
-    // ─── Data integrity: remove misplaced expenses + dedupe trips ───
+    // ─── Data integrity: resolve zombie trips, remove misplaced expenses, dedupe ───
+    const healMsg = resolveActivePastConflict();
     cleanMisplacedExpenses();
     dedupeTrips();
+    if (healMsg) showSyncWarning(healMsg);
 
     // Save merged data locally and push to cloud
     saveLocal("trip", state.trip);
@@ -2107,6 +2184,16 @@ function renderCards() {
   }
   h += '</div>';
 
+  // Data Snapshots (17 Jul): user-facing recovery — no console needed.
+  // Automatic snapshots are taken before risky writes and every 30 min.
+  if (currentUser) {
+    h += '<div class="backup-section"><h3 class="section-title">Data Snapshots</h3>';
+    h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Automatic backups of your synced data. If trips ever look wrong or incomplete, restore a snapshot from before the problem.</div>';
+    h += '<button class="backup-btn" id="show-snapshots" style="width:100%;">Show Available Snapshots</button>';
+    h += '<div id="snapshot-list" style="margin-top:10px;"></div>';
+    h += '</div>';
+  }
+
   // Help section
   h += '<div class="backup-section"><h3 class="section-title">Help</h3>';
   h += '<button class="backup-btn" id="replay-tutorial" style="width:100%;">Show Tutorial Again</button>';
@@ -2120,6 +2207,80 @@ function renderCards() {
   });
   document.getElementById("replay-tutorial")?.addEventListener("click", () => {
     if (typeof showOnboarding === "function") showOnboarding();
+  });
+
+  // ─── Data Snapshots: list + one-tap restore (17 Jul) ───
+  document.getElementById("show-snapshots")?.addEventListener("click", async () => {
+    const listEl = document.getElementById("snapshot-list");
+    if (!listEl) return;
+    listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Loading…</div>';
+    const entries = [];
+    // Local snapshots (survive offline, die with browser storage)
+    (loadLocal("cloud-snapshots", []) || []).forEach((s, i) => {
+      if (s && s.data) entries.push({ src: "local-" + i, label: "This device", takenAt: s.takenAt || 0, data: s.data });
+    });
+    // Cloud snapshots (5 rolling slots)
+    try {
+      const { db, doc, getDoc } = window.FB;
+      for (let slot = 0; slot < 5; slot++) {
+        try {
+          const s = await getDoc(doc(db, "users", currentUser.uid, "snapshots", "snap-" + slot));
+          if (s.exists()) {
+            const d = s.data();
+            entries.push({ src: "cloud-" + slot, label: "Cloud", takenAt: d.takenAt || 0, data: JSON.parse(d.data) });
+          }
+        } catch (e) { /* slot unreadable — skip */ }
+      }
+    } catch (e) { console.error("Cloud snapshot listing failed:", e); }
+    entries.sort((a, b) => b.takenAt - a.takenAt);
+    if (entries.length === 0) {
+      listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No snapshots yet. They are created automatically as you use the app while signed in.</div>';
+      return;
+    }
+    window._snapshotEntries = entries;
+    let lh = "";
+    entries.forEach((s, i) => {
+      const when = s.takenAt ? new Date(s.takenAt).toLocaleString() : "unknown time";
+      const trips = [];
+      if (s.data.trip) trips.push(`${esc(s.data.trip.name)} (open, ${(s.data.expenses || []).length})`);
+      (s.data.pastTrips || []).forEach(p => trips.push(`${esc(p.name)} (${(p.expenses || []).length})`));
+      lh += `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">`;
+      lh += `<div style="font-size:12px;font-weight:600;">${s.label} — ${when}</div>`;
+      lh += `<div style="font-size:11px;color:var(--text-muted);margin:4px 0 8px;">${trips.join(" · ") || "empty"}</div>`;
+      lh += `<button class="backup-btn" data-restore-snapshot="${i}" style="width:100%;">Restore This Snapshot</button>`;
+      lh += `</div>`;
+    });
+    listEl.innerHTML = lh;
+    listEl.querySelectorAll("[data-restore-snapshot]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const s = window._snapshotEntries[parseInt(btn.dataset.restoreSnapshot)];
+        if (!s) return;
+        const when = s.takenAt ? new Date(s.takenAt).toLocaleString() : "unknown time";
+        if (!confirm(`Restore your data to the snapshot from ${when}?\n\nYour current data will itself be snapshotted first, so this is reversible.`)) return;
+        try {
+          // Snapshot the CURRENT cloud state first — restore must be reversible
+          const { db, doc, getDoc } = window.FB;
+          const cur = await getDoc(doc(db, "users", currentUser.uid));
+          if (cur.exists()) await snapshotCloud(cur.data(), "pre-restore");
+          // Apply snapshot to state, run all integrity passes, persist + push
+          state.trip = s.data.trip || null;
+          state.expenses = s.data.expenses || [];
+          state.cards = (s.data.cards && s.data.cards.length) ? s.data.cards : state.cards;
+          state.deletedCardIds = s.data.deletedCardIds || state.deletedCardIds || [];
+          state.pastTrips = s.data.pastTrips || [];
+          resolveActivePastConflict();
+          cleanMisplacedExpenses();
+          dedupeTrips();
+          persist();
+          const ok = await saveToFirebase();
+          render();
+          showSyncWarning(ok === false ? "Restored locally — cloud push was blocked; tap ⟳ to retry." : "Snapshot restored. All your devices will pick it up on next sync (sign out/in on phones if needed).");
+        } catch (e) {
+          console.error("Snapshot restore failed:", e);
+          showSyncWarning("Restore failed: " + (e.message || "unknown error"));
+        }
+      });
+    });
   });
   document.getElementById("add-card")?.addEventListener("click", () => {
     const n = document.getElementById("new-card-name").value.trim();
@@ -2203,6 +2364,11 @@ function renderCards() {
       if (data.cards) state.cards = data.cards;
       if (Array.isArray(data.deletedCardIds)) state.deletedCardIds = data.deletedCardIds;
       if (data.pastTrips) state.pastTrips = data.pastTrips;
+      // 17 Jul: a restored backup can itself carry a zombie (trip both active
+      // and in pastTrips) — resolve before persisting/syncing it anywhere.
+      resolveActivePastConflict();
+      cleanMisplacedExpenses();
+      dedupeTrips();
       state.showRestore = false;
       persist(); render();
       if(st) { st.textContent="Restored!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
