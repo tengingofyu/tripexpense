@@ -300,9 +300,9 @@ input[type="number"] { -moz-appearance: textfield; }
   </button>
   <div class="auth-status" id="auth-status"></div>
   <div class="auth-disclosure">
-    <p><strong>Start Tracking</strong> — your data stays only on this device. Nothing is uploaded, no account needed.</p>
-    <p><strong>Sign in</strong> (optional) — syncs your trips to the cloud (Google Firebase) so you can use them across devices. Your data is private to your account; other users can't see it. As the app's developer, I technically have access to data on the server — I won't look at it, but you should know before choosing to sync.</p>
-    <p class="auth-disclosure-fine">Free hobby app, provided as-is with no warranty.</p>
+    <p><strong>Start Tracking</strong> — everything stays on this device. Nothing is uploaded, no account needed. The most private option.</p>
+    <p><strong>Sign in</strong> (optional) — your trips sync through a secure cloud database (Google Firebase), so you can pick up where you left off on any device. Data is encrypted in transit and at rest, tied to your own Google account, and never visible to other users. It's never sold, shared, or used for anything except showing you your own trips.</p>
+    <p class="auth-disclosure-fine">No sign-in needed if this is the only device you'll track on.</p>
   </div>
 </div>
 
@@ -455,7 +455,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071701;
+const APP_BUILD = 2026071702;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
