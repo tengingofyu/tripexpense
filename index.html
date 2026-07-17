@@ -71,16 +71,14 @@ input[type="number"] { -moz-appearance: textfield; }
 .nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Quick Entry */
-.quick-entry { padding: 16px; padding-top: calc(env(safe-area-inset-top, 0px) + 16px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; background: var(--bg); }
-@media screen and (display-mode: standalone) {
-  .quick-entry { padding-top: calc(env(safe-area-inset-top, 50px) + 16px); }
-}
+.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; background: var(--bg); }
 .input-row { display: flex; gap: 8px; }
-.main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
+.main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 16px; outline: none; }
 .main-input:disabled { opacity: 0.5; }
 
 /* Preview */
-.preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.preview { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.preview:not(:empty) { margin-top: 10px; }
 .preview-amount { font-weight: 700; font-size: 14px; color: var(--accent); }
 .preview-sgd { font-size: 12px; color: var(--success); }
 .preview-card { font-size: 10px; padding: 2px 6px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
@@ -455,7 +453,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071703;
+const APP_BUILD = 2026071704;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
