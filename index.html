@@ -455,7 +455,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026071702;
+const APP_BUILD = 2026071703;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -1421,11 +1421,48 @@ function bindExpenseEvents() {
     if (splitSelect) splitSelect.addEventListener("change", recalcShare);
   }
   const endTrip = document.getElementById("end-trip");
-  if (endTrip) endTrip.addEventListener("click", () => {
-    if (!confirm("End this trip? It moves to History — you can reopen it anytime.")) return;
-    parkActiveTrip(); // merge-by-id, no duplicate trips (12 Jul fix)
-    persist(); state.currentView = "history"; render();
+  if (endTrip) endTrip.addEventListener("click", showEndTripModal);
+}
+
+// ─── End-trip modal (17 Jul): export nudge + how long data survives per device ───
+function showEndTripModal() {
+  if (document.getElementById("endtrip-modal")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "endtrip-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:1500;display:flex;align-items:center;justify-content:center;padding:24px;";
+  wrap.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:360px;width:100%;padding:22px;">
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">End this trip?</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;">It moves to History — you can reopen it anytime. Exporting a copy first is recommended.</div>
+      <div style="font-size:11px;color:var(--text-muted);line-height:1.6;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
+        <strong style="color:var(--text);">How long your data stays on this device</strong><br>
+        iPhone — Safari tab: about 7 days if you don't open the app<br>
+        iPhone — Added to Home Screen: until you remove the app<br>
+        Android: until you clear browser data<br>
+        Signed in: also kept in the cloud, on every device you use
+      </div>
+      <button class="save-cards-btn" id="endtrip-export" style="margin-top:0;">Export Excel & End Trip</button>
+      <button class="backup-btn" id="endtrip-plain" style="width:100%;margin-top:8px;">End Without Exporting</button>
+      <button class="backup-btn" id="endtrip-cancel" style="width:100%;margin-top:8px;background:none;">Cancel</button>
+    </div>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  document.getElementById("endtrip-cancel").addEventListener("click", close);
+  document.getElementById("endtrip-plain").addEventListener("click", () => { close(); finishEndTrip(); });
+  document.getElementById("endtrip-export").addEventListener("click", async () => {
+    try {
+      await generateExcel();
+      close();
+      finishEndTrip();
+    } catch(e) {
+      console.error("Export failed:", e);
+      alert("Export failed: " + (e.message || "unknown error") + "\nThe trip was NOT ended — you can try again.");
+    }
   });
+}
+function finishEndTrip() {
+  parkActiveTrip(); // merge-by-id, no duplicate trips (12 Jul fix)
+  persist(); state.currentView = "history"; render();
 }
 
 function updatePreview(val) {
@@ -2178,6 +2215,7 @@ function renderCards() {
   h += '<button class="backup-btn" id="toggle-restore">Restore</button>';
   h += '</div>';
   h += '<div id="backup-status"></div>';
+  h += '<div style="font-size:11px;color:var(--text-muted);line-height:1.6;margin-top:10px;"><strong style="color:var(--text);">How long data stays on this device:</strong> iPhone Safari tab — about 7 days unused · iPhone Home Screen app — until removed · Android — until browser data is cleared · Signed in — also kept in the cloud.</div>';
   if (state.showRestore) {
     h += '<textarea class="backup-textarea" id="restore-text" placeholder="Paste backup data here..."></textarea>';
     h += '<button class="restore-btn" id="do-restore">Restore Data</button>';
