@@ -1,0 +1,2996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://cdnjs.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.google-analytics.com https://*.analytics.google.com https://accounts.google.com wss://*.firebaseio.com; img-src 'self' https://www.gstatic.com data:; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self';">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TripExpense">
+<title>TripExpense</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { getAnalytics } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-analytics.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCHoMZNv-o4VssCeSjAFKDb2iRpb1QXwQ0",
+  authDomain: "tripexpense-15d99.firebaseapp.com",
+  projectId: "tripexpense-15d99",
+  storageBucket: "tripexpense-15d99.firebasestorage.app",
+  messagingSenderId: "434736138161",
+  appId: "1:434736138161:web:62d955bede88bd822d9f90",
+  measurementId: "G-H5NBE2E2RB"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+
+// Analytics — auto-tracks page views and active users only. No custom events, no personal data.
+try { getAnalytics(fbApp); } catch(e) { /* Analytics not enabled yet */ }
+
+// Expose to global scope for the non-module script
+window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
+</script>
+<style>
+:root {
+  --bg: #0a0f1a;
+  --surface: #111827;
+  --card: #0f172a;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --accent-dim: #1e40af;
+  --danger: #ef4444;
+  --danger-dim: #7f1d1d;
+  --success: #10b981;
+  --warn: #f59e0b;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: min(480px, 100vw); margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-top: env(safe-area-inset-top); }
+.statusbar-cover { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 100; }
+input, select, textarea, button { font-family: inherit; }
+/* iOS zooms any focused field under 16px and does not zoom back out */
+input, select, textarea { font-size: 16px !important; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
+/* Header */
+.header { padding: 8px 16px 12px; border-bottom: 1px solid var(--border); }
+.header-top { display: flex; align-items: center; justify-content: space-between; }
+.logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: var(--accent); }
+.trip-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; background: var(--accent-dim); color: var(--accent); }
+.trip-name { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+/* Nav */
+.nav { display: flex; border-bottom: 1px solid var(--border); }
+.nav button { flex: 1; padding: 14px 0; background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid transparent; }
+.nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Quick Entry */
+.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: var(--bg); }
+.input-row { display: flex; gap: 8px; }
+.main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 16px; outline: none; }
+.main-input:disabled { opacity: 0.5; }
+
+/* Preview */
+.preview { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.preview:not(:empty) { margin-top: 10px; }
+.preview-amount { font-weight: 700; font-size: 14px; color: var(--accent); }
+.preview-sgd { font-size: 12px; color: var(--success); }
+.preview-card { font-size: 10px; padding: 2px 6px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
+.preview-cat { font-size: 10px; padding: 2px 6px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
+.preview-desc { font-size: 12px; color: var(--text-dim); }
+.preview-submit { background: var(--accent); border: none; color: #fff; font-size: 16px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: auto; }
+
+/* Claim prompt */
+.claim-prompt { margin-top: 10px; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
+.claim-text { font-size: 13px; color: var(--text); display: block; margin-bottom: 10px; }
+.claim-amount { font-weight: 700; color: var(--accent); }
+.claim-buttons { display: flex; gap: 8px; }
+.claim-yes { flex: 1; padding: 10px; background: var(--warn); border: none; border-radius: 6px; color: #000; font-size: 13px; font-weight: 600; cursor: pointer; }
+.claim-no { flex: 1; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); font-size: 13px; cursor: pointer; }
+
+/* Day header */
+.day-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 6px; border-top: 1px solid var(--border); }
+.day-date { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.day-total { font-size: 12px; font-weight: 600; color: var(--accent); }
+
+/* Expense item */
+.expense-item { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; gap: 8px; transition: background 0.15s; }
+.expense-item:active { background: var(--surface); }
+.drag-handle { color: var(--text-muted); font-size: 18px; cursor: grab; padding: 4px 0 4px 4px; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0; line-height: 1; }
+.drag-handle:active { cursor: grabbing; }
+.swipe-container.drag-source { opacity: 0.3; }
+.expense-item.drag-target-above { border-top: 3px solid var(--accent); }
+.expense-item.drag-target-below { border-bottom: 3px solid var(--accent); }
+.day-header.drag-over { border-bottom: 3px solid var(--accent); }
+
+/* Swipe to delete */
+.swipe-container { position: relative; overflow: hidden; }
+.swipe-delete-bg { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 24px; color: #fff; font-size: 13px; font-weight: 600; pointer-events: none; }
+.swipe-container .expense-item { position: relative; z-index: 1; background: var(--bg); transition: none; }
+.expense-left { flex: 1; min-width: 0; }
+.expense-desc { font-size: 13px; color: var(--text); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.expense-meta { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.tag { font-size: 9px; padding: 1px 5px; background: var(--accent-dim); border-radius: 3px; color: var(--accent); }
+.tag-cat { font-size: 9px; padding: 1px 5px; background: #1a2e1a; border-radius: 3px; color: var(--success); }
+.tag-claim { font-size: 9px; padding: 1px 5px; background: #2e2a1a; border-radius: 3px; color: var(--warn); }
+.tag-shared { font-size: 9px; padding: 1px 5px; background: #1a2a2e; border-radius: 3px; color: #4ecdc4; }
+.expense-right { text-align: right; flex-shrink: 0; }
+.expense-amount { font-size: 13px; font-weight: 600; color: var(--text); display: block; }
+.expense-sgd { font-size: 10px; color: var(--text-muted); display: block; }
+.sgd-pending { color: var(--danger); font-style: italic; }
+
+/* Swap button */
+.swap-btn { background: var(--accent-dim); border: none; color: var(--accent); font-size: 14px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.preview-date { font-size: 10px; padding: 2px 6px; background: #2a1a2e; border-radius: 3px; color: #c084fc; }
+
+/* Deleted item */
+.expense-deleted { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: rgba(127,29,29,0.12); }
+.expense-deleted span { opacity: 0.5; text-decoration: line-through; font-size: 13px; }
+.undo-btn { background: var(--accent); border: none; color: #fff; font-size: 11px; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+
+/* Edit mode */
+.expense-edit { padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.edit-grid { display: flex; flex-direction: column; gap: 6px; }
+.edit-input { padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; }
+.edit-select { padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; width: 100%; }
+.edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+.save-btn { padding: 6px 16px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; }
+.cancel-btn { padding: 6px 16px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-dim); font-size: 11px; cursor: pointer; }
+.edit-claim-label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+
+/* Dashboard */
+.dashboard { padding: 16px; }
+
+/* Dashboard totals banner */
+.total-banner { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+.total-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; }
+.total-label { font-size: 18px; color: #fff; font-weight: 600; }
+.total-value { font-size: 18px; font-weight: 700; color: #fff; }
+.total-pending { font-size: 11px; color: var(--danger); margin-top: 6px; font-style: italic; }
+.total-entries { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.banner-header { display: grid; grid-template-columns: 1fr minmax(70px, 110px) minmax(70px, 110px); padding: 0 0 8px; border-bottom: 1px solid rgba(255,255,255,0.2); margin-bottom: 8px; }
+.banner-col-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.6); text-align: right; }
+.banner-row { display: grid; grid-template-columns: 1fr minmax(70px, 110px) minmax(70px, 110px); padding: 7px 0; align-items: baseline; }
+.banner-row-label { font-size: 17px; color: #fff; font-weight: 600; }
+.banner-row-label.dim { color: rgba(255,255,255,0.55); font-size: 15px; }
+.banner-val { font-size: 17px; font-weight: 700; color: #fff; text-align: right; }
+.banner-val.dim { color: rgba(255,255,255,0.55); font-size: 15px; }
+.banner-val.pending-cell { font-size: 11px; font-style: italic; color: #ffd0d0; }
+
+/* Dual-column breakdown */
+.breakdown-header { display: grid; grid-template-columns: 1fr 90px 90px; padding: 0 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.bh-right { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); text-align: right; }
+.breakdown-row-dual { display: grid; grid-template-columns: 1fr 90px 90px; padding: 7px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
+.breakdown-val { font-size: 12px; font-weight: 600; color: var(--text); text-align: right; }
+.breakdown { margin-top: 16px; background: var(--surface); border-radius: 8px; padding: 14px; border: 1px solid var(--border); }
+.breakdown-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 10px; }
+.breakdown-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
+.breakdown-label { font-size: 12px; color: var(--text-dim); }
+.breakdown-value { font-size: 12px; font-weight: 600; color: var(--text); }
+
+/* Cards manager */
+.card-manager { padding: 16px; }
+.section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.card-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(30,41,59,0.19); }
+.card-row .name { flex: 1; font-size: 12px; }
+.card-row .shortcut { font-size: 11px; color: var(--accent); background: var(--accent-dim); padding: 2px 6px; border-radius: 3px; }
+.card-row .remove { background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; }
+.add-card-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.add-card-row input { padding: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; }
+.add-card-row .name-input { flex: 1; min-width: 100px; }
+.add-card-row .shortcut-input { width: 80px; }
+.add-card-btn { padding: 8px 12px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; }
+.save-cards-btn { margin-top: 12px; padding: 10px 20px; background: var(--success); border: none; border-radius: 6px; color: #fff; font-size: 12px; cursor: pointer; width: 100%; }
+
+/* Backup */
+.backup-section { margin-top: 24px; padding: 0 16px; }
+.backup-buttons { display: flex; gap: 8px; margin-bottom: 8px; }
+.backup-btn { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--accent); font-size: 12px; cursor: pointer; }
+.backup-status { font-size: 12px; color: var(--success); margin-bottom: 8px; }
+.backup-textarea { width: 100%; min-height: 80px; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 16px; resize: vertical; }
+.restore-btn { margin-top: 8px; padding: 10px 20px; background: var(--warn); border: none; border-radius: 6px; color: #000; font-size: 12px; cursor: pointer; width: 100%; font-weight: 600; }
+
+/* History */
+.past-trip { display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--surface); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
+.past-trip-name { font-size: 13px; font-weight: 600; }
+.past-trip-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.load-btn { padding: 6px 14px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 11px; cursor: pointer; }
+.new-trip-btn { width: 100%; padding: 14px; background: var(--surface); border: 1px dashed var(--border); border-radius: 8px; color: var(--text-dim); font-size: 13px; cursor: pointer; margin-top: 12px; }
+
+/* Setup */
+.setup-card { background: var(--surface); border-radius: 12px; padding: 24px; border: 1px solid var(--border); margin: 16px; }
+.setup-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+.setup-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; display: block; margin-top: 14px; }
+.setup-input { width: 100%; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 16px; }
+.type-toggle { display: flex; gap: 8px; }
+.type-btn { flex: 1; padding: 10px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text-dim); }
+.type-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.setup-save { width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 24px; }
+.setup-save:disabled { opacity: 0.4; }
+
+/* Bottom actions */
+.bottom-actions { display: flex; gap: 8px; padding: 20px 16px; }
+.export-btn { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--accent); font-size: 12px; cursor: pointer; }
+.end-trip-btn { flex: 1; padding: 12px; background: var(--danger-dim); border: 1px solid rgba(239,68,68,0.19); border-radius: 8px; color: var(--danger); font-size: 12px; cursor: pointer; }
+
+/* CSV export area */
+.csv-area { margin-top: 8px; padding: 0 16px; }
+/* Export */
+
+.empty { text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px; }
+.hidden { display: none; }
+
+/* Auth screen */
+.auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; padding: 24px; }
+.auth-screen.hidden { display: none; }
+.auth-logo { font-size: 28px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.auth-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; }
+.auth-btn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px 28px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; min-width: 240px; }
+.auth-btn:active { opacity: 0.85; }
+.auth-local-note { font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 28px 0; width: 240px; color: var(--text-dim); font-size: 12px; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.auth-btn-secondary { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 24px; background: #fff; border: none; border-radius: 8px; color: #333; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.auth-btn-secondary img { width: 16px; height: 16px; }
+.auth-btn img { width: 20px; height: 20px; }
+.auth-status { font-size: 12px; color: var(--danger); margin-top: 12px; }
+.auth-disclosure { margin-top: 32px; max-width: 340px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; text-align: left; }
+.auth-disclosure p { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0 0 10px; }
+.auth-disclosure p:last-child { margin-bottom: 0; }
+.auth-disclosure strong { color: var(--text); }
+.auth-disclosure-fine { color: var(--text-dim) !important; font-style: italic; }
+/* Onboarding */
+.onboarding { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(4px); }
+.onboarding.hidden { display: none; }
+.onboarding-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; max-width: 360px; width: 100%; padding: 32px 24px 20px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.onboarding-step { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ob-icon { font-size: 44px; margin-bottom: 16px; }
+.ob-title { font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 12px; }
+.ob-text { font-size: 14px; color: var(--text-muted); margin: 0 0 14px; line-height: 1.5; }
+.ob-example { background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 16px; font-size: 16px; color: var(--accent); font-family: monospace; margin: 0 0 14px; }
+.ob-hint { font-size: 12px; color: var(--text-dim); margin: 0; line-height: 1.5; }
+.onboarding-dots { display: flex; gap: 8px; justify-content: center; margin: 20px 0; }
+.ob-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+.ob-dot.active { background: var(--accent); }
+.onboarding-actions { display: flex; justify-content: space-between; align-items: center; }
+.ob-skip { background: none; border: none; color: var(--text-dim); font-size: 14px; cursor: pointer; padding: 10px 16px; }
+.ob-next { background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600; padding: 10px 28px; cursor: pointer; }
+.user-info { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 4px 16px; }
+.user-info.online { color: var(--success); }
+.user-info.offline { color: var(--danger); }
+.signout-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; }
+.sync-btn { background: none; border: 1px solid var(--border); color: var(--accent); font-size: 16px; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; flex-shrink: 0; line-height: 34px; text-align: center; padding: 0; }
+.sync-btn:active { background: var(--accent-dim); }
+.last-sync { font-size: 9px; color: var(--text-muted); flex: 1; text-align: right; }
+
+</style>
+</head>
+<body>
+
+<!-- Onboarding overlay -->
+<div id="onboarding" class="onboarding hidden">
+  <div class="onboarding-card">
+    <div class="onboarding-step" id="ob-step"></div>
+    <div class="onboarding-dots" id="ob-dots"></div>
+    <div class="onboarding-actions">
+      <button class="ob-skip" id="ob-skip">Skip</button>
+      <button class="ob-next" id="ob-next">Next</button>
+    </div>
+  </div>
+</div>
+
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-logo">TripExpense</div>
+  <div class="auth-sub">Track your trip spending, fast.</div>
+  <button class="auth-btn" id="offline-btn">Start Tracking</button>
+  <div class="auth-local-note">Works right here on your device — no account needed.</div>
+
+  <div class="auth-divider"><span>or</span></div>
+
+  <button class="auth-btn-secondary" id="google-signin">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G"> Sign in to sync across devices
+  </button>
+  <div class="auth-status" id="auth-status"></div>
+  <div class="auth-disclosure">
+    <p><strong>Start Tracking</strong> — everything stays on this device. Nothing is uploaded, no account needed. The most private option.</p>
+    <p><strong>Sign in</strong> (optional) — your trips sync through a secure cloud database (Google Firebase), so you can pick up where you left off on any device. Data is encrypted in transit and at rest, tied to your own Google account, and never visible to other users. It's never sold, shared, or used for anything except showing you your own trips.</p>
+    <p class="auth-disclosure-fine">No sign-in needed if this is the only device you'll track on.</p>
+  </div>
+</div>
+
+
+<div id="app" class="hidden">
+  <div class="statusbar-cover"></div>
+  <!-- User info -->
+  <div class="user-info" id="user-info-bar">
+    <span id="user-email"></span>
+    <span class="last-sync" id="last-sync"></span>
+    <button class="sync-btn" id="sync-btn" title="Sync now">⟳</button>
+    <button class="signout-btn" id="signout-btn">Sign out</button>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <h1 class="logo">TripExpense</h1>
+      <span class="trip-badge" id="trip-badge"></span>
+    </div>
+    <div class="trip-name" id="trip-name"></div>
+  </div>
+
+  <!-- Nav -->
+  <div class="nav" id="nav"></div>
+
+  <!-- Views -->
+  <div id="view-expenses"></div>
+  <div id="view-dashboard" class="hidden"></div>
+  <div id="view-cards" class="hidden"></div>
+  <div id="view-history" class="hidden"></div>
+  <div id="view-setup" class="hidden"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" integrity="sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+// ─── Data ──────────────────────────────────────────────
+// Frame-buster: frame-ancestors CSP requires an HTTP header, which GitHub
+// Pages cannot set — this is the best available substitute (12 Jul).
+if (window.top !== window.self) {
+  try { window.top.location.replace(window.location.href); }
+  catch (e) { document.documentElement.innerHTML = ""; }
+}
+
+// 12 Jul: generic defaults for new users (personal card lists live in each
+// user's saved data — defaults only apply when no cards exist yet).
+const DEFAULT_CARDS = [
+  { id:"1", name:"Cash", shortcut:"cash" },
+  { id:"2", name:"Visa", shortcut:"visa" },
+  { id:"3", name:"Mastercard", shortcut:"mc" },
+  { id:"4", name:"Amex", shortcut:"amex" },
+];
+
+const CATEGORIES = [
+  { name:"Transport", keywords:["uber","grab","taxi","cab","lyft","bus","train","mrt","ferry","subway","metro","transit","ride","didi"] },
+  { name:"Food & Drink", keywords:["lunch","dinner","breakfast","brunch","coffee","cafe","restaurant","eat","meal","food","bar","drinks","supper","beer"] },
+  { name:"Groceries", keywords:["grocery","groceries","supermarket","market","target","walmart","costco","fairprice","cold storage"] },
+  { name:"Shopping", keywords:["shop","mall","store","buy","purchase","outlet"] },
+  { name:"Accommodation", keywords:["hotel","hostel","airbnb","lodge","resort","inn","stay","room"] },
+  { name:"Activities", keywords:["ticket","tickets","museum","tour","show","attraction","entry","admission","park"] },
+  { name:"Others", keywords:[] },
+];
+
+// ─── State ─────────────────────────────────────────────
+let state = {
+  trip: null,
+  expenses: [],
+  cards: DEFAULT_CARDS,
+  pastTrips: [],
+  currentView: "expenses",
+  pendingExpense: null,
+  pendingType: null,
+  deletedIds: {},
+  deletedCardIds: [],
+  editingId: null,
+  
+  showRestore: false,
+  isDragging: false,
+  isSwiping: false,
+  lastPreview: null,
+  swapped: false,
+  isHistorical: false,
+  editingEnabled: false,
+  isOffline: false,
+  syncMode: "auto", // "auto" or "manual"
+  lastSyncAt: null,
+};
+const deleteTimers = {};
+let onboardingQueued = false; // first-run tutorial shown at most once per load
+
+// ─── Storage ───────────────────────────────────────────
+let currentUser = null;
+let saveTimer = null;
+
+// localStorage cache (for fast load and offline)
+function loadLocal(key, fallback) {
+  try { const v = localStorage.getItem("tengtrip-" + key); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+}
+function saveLocal(key, value) {
+  try {
+    localStorage.setItem("tengtrip-" + key, JSON.stringify(value));
+  } catch(e) {
+    console.error("saveLocal failed:", e);
+    showStorageWarning();
+  }
+}
+
+// Persistent banner when device storage fails — data isn't being saved
+let storageWarningShown = false;
+function showStorageWarning() {
+  if (storageWarningShown) return;
+  storageWarningShown = true;
+  const bar = document.createElement("div");
+  bar.id = "storage-warning";
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2000;background:#7a1f1f;color:#fff;font-size:12px;padding:10px 14px;text-align:center;line-height:1.4;";
+  bar.innerHTML = 'Storage full — changes are NOT being saved. Export a Backup now (Settings), then delete old trips or free up space. <button id="storage-warning-close" style="margin-left:8px;background:none;border:1px solid #fff;border-radius:4px;color:#fff;font-size:11px;padding:2px 8px;cursor:pointer;">Dismiss</button>';
+  document.body.appendChild(bar);
+  document.getElementById("storage-warning-close")?.addEventListener("click", () => {
+    bar.remove();
+    storageWarningShown = false; // re-warn if it fails again
+  });
+}
+
+// Persistent, dismissible banner for sync-safety events (12 Jul): these mean
+// "your data is not reaching the cloud" and were previously shown only as
+// 9px status text for 3 seconds. Message set via textContent (user data safe).
+let syncWarningShown = false;
+function showSyncWarning(msg) {
+  showSyncStatus(msg);
+  if (syncWarningShown) {
+    const m = document.getElementById("sync-warning-msg");
+    if (m) m.textContent = msg;
+    return;
+  }
+  syncWarningShown = true;
+  const bar = document.createElement("div");
+  bar.id = "sync-warning";
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2000;background:#7a4a1f;color:#fff;font-size:12px;padding:10px 14px;text-align:center;line-height:1.4;";
+  bar.innerHTML = '<span id="sync-warning-msg"></span> <button id="sync-warning-close" style="margin-left:8px;background:none;border:1px solid #fff;border-radius:4px;color:#fff;font-size:11px;padding:2px 8px;cursor:pointer;">Dismiss</button>';
+  document.body.appendChild(bar);
+  const m = document.getElementById("sync-warning-msg");
+  if (m) m.textContent = msg;
+  document.getElementById("sync-warning-close")?.addEventListener("click", () => {
+    bar.remove();
+    syncWarningShown = false;
+  });
+}
+
+// ─── Sync safety (added 2026-07-12 after the 10 Jul data-loss incident) ───
+// Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
+// Firestore rules enforce appBuild >= existing, so a stale tab running old
+// cached code (which writes a lower/missing appBuild) is rejected server-side.
+const APP_BUILD = 2026100501;
+
+// Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
+function collectTripStats(trip, expenses, pastTrips) {
+  const map = {};
+  const add = (t, exps) => {
+    if (!t || !t.id) return;
+    const list = Array.isArray(exps) ? exps : [];
+    const stats = {
+      name: t.name || t.id,
+      count: list.length,
+      sgdCount: list.filter(e => e && e.sgdAmount).length,
+      ids: list.map(e => e && e.id).filter(Boolean),
+    };
+    const prev = map[t.id];
+    if (!prev) { map[t.id] = stats; return; }
+    // 17 Jul fix: same trip id present twice (active + past — the zombie case).
+    // Keep the RICHER stats and the union of ids, so a duplicated trip can
+    // never mask a data regression from syncGuard.
+    map[t.id] = {
+      name: stats.name,
+      count: Math.max(prev.count, stats.count),
+      sgdCount: Math.max(prev.sgdCount, stats.sgdCount),
+      ids: [...new Set([...prev.ids, ...stats.ids])],
+    };
+  };
+  add(trip, expenses);
+  (pastTrips || []).forEach(pt => add(pt, pt.expenses));
+  return map;
+}
+
+// Compare what we are about to write against what the cloud currently holds.
+// Returns { block: string|null, risky: boolean }.
+//  - block: human-readable reason the write must be refused
+//  - risky: write is allowed but reduces data somewhere → snapshot cloud first
+function syncGuard(cloud) {
+  const cloudTrips = collectTripStats(cloud.trip, cloud.expenses, cloud.pastTrips);
+  const localTrips = collectTripStats(state.trip, state.expenses, state.pastTrips);
+  const localExpIds = new Set();
+  Object.values(localTrips).forEach(t => t.ids.forEach(id => localExpIds.add(id)));
+  let risky = ((cloud.trip && cloud.trip.id) || null) !== ((state.trip && state.trip.id) || null);
+
+  // Cards guard (12 Jul): cards were previously covered by no guard at all —
+  // a restore with cards:[] could wipe them cloud-wide.
+  if ((cloud.cards || []).length > 0 && (!state.cards || state.cards.length === 0)) {
+    return { block: "all payment cards would be wiped", risky: true };
+  }
+
+  for (const tid of Object.keys(cloudTrips)) {
+    const ct = cloudTrips[tid];
+    if (ct.count === 0) continue;
+    const lt = localTrips[tid];
+    if (!lt) {
+      // Trip id absent locally. Legitimate cause: dedupeTrips() merged it into
+      // another trip — its expenses survive under a different trip id. Block
+      // only if NONE of its expense ids exist anywhere locally (whole-trip loss).
+      const survivors = ct.ids.filter(id => localExpIds.has(id)).length;
+      if (survivors === 0) return { block: `"${ct.name}" (${ct.count} entries) would be wiped`, risky: true };
+      risky = true;
+      continue;
+    }
+    // Per-trip entry-count regression: small drops are normal (deletes sync
+    // one at a time); large drops mean a stale/partial dataset is writing.
+    const drop = ct.count - lt.count;
+    if (drop > Math.max(3, Math.ceil(ct.count * 0.10))) {
+      return { block: `"${ct.name}" would drop ${drop} of ${ct.count} entries`, risky: true };
+    }
+    // SGD-completeness regression: SGD values are only ever added or edited.
+    // A drop bigger than the entry-count drop (+2 slack for legitimate edits)
+    // means SGD data is being downgraded (the China May 2026 failure mode).
+    const sgdDrop = ct.sgdCount - lt.sgdCount;
+    if (sgdDrop > Math.max(0, drop) + 2) {
+      return { block: `"${ct.name}" would lose SGD on ${sgdDrop} entries`, risky: true };
+    }
+    if (drop > 0 || sgdDrop > 0) risky = true;
+  }
+  return { block: null, risky };
+}
+
+// Snapshot the CURRENT cloud state before we overwrite it.
+// Local copy: always (latest 2, localStorage). Cloud copy: rolling 5 slots
+// under users/{uid}/snapshots/snap-N (requires the 2026-07 rules update).
+async function snapshotCloud(cloud, reason) {
+  const now = Date.now();
+  try {
+    const prev = loadLocal("cloud-snapshots", []);
+    prev.unshift({ takenAt: now, reason, data: cloud });
+    saveLocal("cloud-snapshots", prev.slice(0, 2));
+  } catch (e) { console.error("Local snapshot failed:", e); }
+  try {
+    const { db, doc, setDoc } = window.FB;
+    const slot = Math.floor(now / 1800000) % 5; // 30-min windows → 5 rolling slots
+    await setDoc(doc(db, "users", currentUser.uid, "snapshots", "snap-" + slot), {
+      takenAt: now,
+      reason,
+      appBuild: APP_BUILD,
+      data: JSON.stringify(cloud),
+    });
+    saveLocal("last-cloud-snapshot-at", now);
+  } catch (e) {
+    // Best-effort: do not abort the save, but surface it — most likely cause
+    // is the snapshots rules block not being deployed yet.
+    console.error("Cloud snapshot failed (snapshots rules deployed?):", e);
+    showSyncStatus("Snapshot failed — check rules");
+  }
+}
+
+async function saveToFirebase() {
+  if (!currentUser) return;
+  try {
+    const { db, doc, getDoc, setDoc } = window.FB;
+
+    // Safeguard: never push empty/minimal/regressed data over existing cloud data
+    const snap2 = await getDoc(doc(db, "users", currentUser.uid));
+    if (snap2.exists()) {
+      const cloud = snap2.data();
+
+      // Guard 0 (stale code): never write from a tab running an older build
+      // than the one that last wrote the cloud doc. Firestore rules enforce
+      // this server-side too; this check just gives a clear message.
+      if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
+        console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
+        showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
+        return false;
+      }
+
+      // Guard 1: block if local has significantly fewer TOTAL entries than cloud (>50% loss)
+      const cloudTotal = (cloud.expenses || []).length + (cloud.pastTrips || []).reduce((s, pt) => s + (pt.expenses || []).length, 0);
+      const localTotal = state.expenses.length + state.pastTrips.reduce((s, pt) => s + (pt.expenses || []).length, 0);
+      if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) {
+        console.error(`SYNC BLOCKED: Local total ${localTotal} entries, cloud total ${cloudTotal}. Refusing to overwrite.`);
+        showSyncWarning("Sync blocked — this device has much less data than the cloud. Tap ⟳ to merge first.");
+        return false;
+      }
+
+      // Guard 2: whole-trip-loss + per-trip count/SGD regression
+      // (the 10 Jul incident: Korea ≈27% of total slipped under Guard 1)
+      const g = syncGuard(cloud);
+      if (g.block) {
+        console.error(`SYNC BLOCKED: ${g.block}. Tap ⟳ Sync to merge with cloud first.`);
+        showSyncWarning("Sync blocked — " + g.block + ". Tap ⟳ to merge with cloud first.");
+        return false;
+      }
+
+      // Snapshot cloud before overwriting: always before a risky (data-reducing)
+      // write, otherwise at most every 30 minutes.
+      const lastSnapAt = loadLocal("last-cloud-snapshot-at", 0);
+      if (g.risky || Date.now() - lastSnapAt > 1800000) {
+        await snapshotCloud(cloud, g.risky ? "pre-risky-write" : "periodic");
+      }
+    }
+
+    await setDoc(doc(db, "users", currentUser.uid), {
+      trip: state.trip,
+      expenses: state.expenses,
+      cards: state.cards,
+      deletedCardIds: state.deletedCardIds,
+      pastTrips: state.pastTrips,
+      updatedAt: Date.now(),
+      appBuild: APP_BUILD,
+    });
+    state.lastSyncAt = Date.now();
+    saveLocal("last-sync-at", state.lastSyncAt);
+    return true;
+  } catch(e) {
+    console.error("Firebase save error:", e);
+    if (!navigator.onLine) {
+      showSyncStatus("Saved locally (offline)");
+    } else if (e && e.code === "permission-denied") {
+      // Rules rejected the write — a newer build wrote the doc after our read,
+      // or this tab's code predates the appBuild rules. Either way: refresh.
+      showSyncWarning("Cloud rejected the write — refresh this tab to get the latest version.");
+    } else {
+      showSyncStatus("Sync failed");
+    }
+    return false;
+  }
+}
+
+function showSyncStatus(msg) {
+  const el = document.getElementById("last-sync");
+  if (el) {
+    el.textContent = msg;
+    // Revert to time-based text after 3 seconds
+    setTimeout(() => { if (typeof updateUserBar === 'function') updateUserBar(); }, 3000);
+  }
+}
+
+function loadState() {
+  state.trip = loadLocal("trip", null);
+  state.expenses = loadLocal("expenses", []);
+  state.cards = loadLocal("cards", DEFAULT_CARDS);
+  state.deletedCardIds = loadLocal("deleted-card-ids", []);
+  state.pastTrips = loadLocal("past-trips", []);
+  state.syncMode = loadLocal("sync-mode", "auto");
+  state.lastSyncAt = loadLocal("last-sync-at", null);
+  const healMsg = resolveActivePastConflict();
+  cleanMisplacedExpenses();
+  dedupeTrips();
+  if (healMsg) setTimeout(() => showSyncWarning(healMsg), 800);
+}
+
+// Move expenses whose currency doesn't match the active trip to the correct past trip
+function cleanMisplacedExpenses() {
+  if (!state.trip || state.expenses.length === 0) return;
+  const tripCur = state.trip.currency;
+  const misplaced = state.expenses.filter(e => e.currency && e.currency !== tripCur && e.currency !== "SGD" && !isSgdOnlyEntry(e));
+  if (misplaced.length === 0) return;
+  console.log(`Data integrity: moving ${misplaced.length} misplaced expenses to past trips`);
+  const byCur = {};
+  misplaced.forEach(e => { (byCur[e.currency] = byCur[e.currency] || []).push(e); });
+  const rehomedIds = new Set();
+  Object.entries(byCur).forEach(([cur, exps]) => {
+    let pt = state.pastTrips.find(p => p.currency === cur);
+    if (!pt) {
+      // 12 Jul fix: never discard orphans — create a recovery trip instead.
+      // (Previously these were removed from state.expenses and lost forever.)
+      pt = { id: genId(), name: "Recovered " + cur, currency: cur, type: "personal", groupSize: 1, createdAt: Date.now(), endedAt: Date.now(), expenses: [] };
+      state.pastTrips.push(pt);
+      console.warn(`Data integrity: created recovery trip for ${exps.length} orphaned ${cur} expenses`);
+    }
+    const merged = {};
+    (pt.expenses || []).forEach(e => { merged[e.id] = e; });
+    exps.forEach(e => { merged[e.id] = e; rehomedIds.add(e.id); });
+    pt.expenses = Object.values(merged);
+  });
+  state.expenses = state.expenses.filter(e => !rehomedIds.has(e.id));
+}
+
+// ─── 17 Jul fix: zombie-trip resolver ───
+// A trip must never be BOTH the active trip and a past trip. This state arises
+// when a stale device (trip still active in its old localStorage) merges with
+// a cloud where that same trip was long since ended — the merge kept the local
+// active copy AND pulled the ended copy into pastTrips (the "China May 2026"
+// resurrection incident, 17 Jul). Resolve by recency:
+//   - If the ended (past) copy is at least as recent as the last local edit to
+//     the active copy, the ENDED state wins: fold active expenses into the past
+//     trip (never dropping an SGD value) and clear the active slot.
+//   - Otherwise the user genuinely reopened and edited it more recently than it
+//     was ended: the ACTIVE state wins — absorb the past copy into it.
+// Returns a message describing the heal (for a user-visible banner), or null.
+function resolveActivePastConflict() {
+  if (!state.trip || !state.trip.id) return null;
+  const idx = state.pastTrips.findIndex(p => p.id === state.trip.id);
+  if (idx < 0) return null;
+  const past = state.pastTrips[idx];
+
+  const mergeExps = (a, b) => { // union by id, newer wins, never lose SGD
+    const m = {};
+    (a || []).forEach(e => { m[e.id] = e; });
+    (b || []).forEach(e => {
+      const ex = m[e.id];
+      if (!ex) { m[e.id] = e; return; }
+      const newer = (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0) ? e : ex;
+      const other = newer === e ? ex : e;
+      if (!newer.sgdAmount && other.sgdAmount) newer.sgdAmount = other.sgdAmount;
+      m[e.id] = newer;
+    });
+    return Object.values(m);
+  };
+
+  // While the user is deliberately viewing/editing a reopened trip, keep it
+  // open: absorb the past copy into the active view. Back to History re-parks.
+  if (state.isHistorical) {
+    state.expenses = mergeExps(state.expenses, past.expenses);
+    state.pastTrips.splice(idx, 1);
+    return null; // not a heal-banner event — user is mid-workflow
+  }
+
+  const lastLocalEdit = Math.max(
+    state.trip.updatedAt || 0,
+    ...state.expenses.map(e => e.updatedAt || e.createdAt || 0),
+    0
+  );
+  const endedTime = past.endedAt || past.createdAt || 0;
+
+  if (endedTime >= lastLocalEdit) {
+    // Ended copy wins — fold active into past, clear active slot
+    const folded = mergeExps(past.expenses, state.expenses);
+    state.pastTrips[idx] = { ...past, expenses: folded };
+    state.trip = null;
+    state.expenses = [];
+    return `Fixed: "${past.name}" was showing an outdated copy — the completed version has been restored.`;
+  } else {
+    // Active copy is genuinely newer (real reopen + edits) — absorb past copy
+    state.expenses = mergeExps(state.expenses, past.expenses);
+    state.pastTrips.splice(idx, 1);
+    return null;
+  }
+}
+
+// Merge duplicate past trips that share the same name + currency (keep richer expense set)
+function dedupeTrips() {
+  if (!state.pastTrips || state.pastTrips.length < 2) return;
+  const byKey = {};
+  const order = [];
+  state.pastTrips.forEach(pt => {
+    const key = `${pt.name}|${pt.currency}`;
+    if (!byKey[key]) { byKey[key] = pt; order.push(key); return; }
+    // Duplicate found — merge expenses by ID, keep newer-edited version of each
+    const existing = byKey[key];
+    const merged = {};
+    (existing.expenses || []).forEach(e => { merged[e.id] = e; });
+    (pt.expenses || []).forEach(e => {
+      const ex = merged[e.id];
+      if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
+    });
+    // Keep the trip metadata that has more expenses with SGD filled (more complete)
+    const existingSgd = (existing.expenses || []).filter(e => e.sgdAmount).length;
+    const ptSgd = (pt.expenses || []).filter(e => e.sgdAmount).length;
+    const baseTrip = ptSgd > existingSgd ? pt : existing;
+    byKey[key] = { ...baseTrip, expenses: Object.values(merged) };
+  });
+  const deduped = order.map(k => byKey[k]);
+  if (deduped.length !== state.pastTrips.length) {
+    console.log(`Dedupe: merged ${state.pastTrips.length - deduped.length} duplicate trip(s)`);
+    state.pastTrips = deduped;
+  }
+}
+
+// Move the currently open trip back into pastTrips, merging by id if it's
+// already there. Never discards data. (12 Jul fix: Reopen used to overwrite
+// the open trip silently, losing it and all its expenses.)
+function parkActiveTrip() {
+  if (!state.trip) return;
+  const t = state.trip;
+  const exps = state.expenses || [];
+  const idx = state.pastTrips.findIndex(p => p.id === t.id);
+  if (idx >= 0) {
+    const existing = state.pastTrips[idx];
+    const merged = {};
+    (existing.expenses || []).forEach(e => { merged[e.id] = e; });
+    exps.forEach(e => {
+      const ex = merged[e.id];
+      if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
+    });
+    state.pastTrips[idx] = { ...existing, ...t, expenses: Object.values(merged), endedAt: existing.endedAt || t.endedAt || Date.now() };
+  } else {
+    state.pastTrips.push({ ...t, expenses: exps, endedAt: t.endedAt || Date.now() });
+  }
+  state.trip = null;
+  state.expenses = [];
+  state.isHistorical = false;
+  state.editingEnabled = false;
+}
+
+function persist() {
+  saveLocal("trip", state.trip);
+  saveLocal("expenses", state.expenses);
+  saveLocal("cards", state.cards);
+  saveLocal("deleted-card-ids", state.deletedCardIds);
+  saveLocal("past-trips", state.pastTrips);
+  // Auto-sync to Firebase if enabled and signed in
+  if (state.syncMode === "auto" && currentUser) {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveToFirebase(), 1500);
+  }
+}
+
+async function manualSync() {
+  if (!currentUser) {
+    showSyncStatus("Sign in first to sync");
+    return;
+  }
+  showSyncStatus("Syncing...");
+  try {
+    // Load cloud data
+    const { db, doc, getDoc } = window.FB;
+    const snap = await getDoc(doc(db, "users", currentUser.uid));
+    
+    if (snap.exists()) {
+      const cloud = snap.data();
+
+      // Stale-code check: don't half-sync from a tab running an older build
+      // than the one that last wrote the cloud doc.
+      if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
+        console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
+        showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
+        return;
+      }
+
+      // Save original arrays before any merge
+      const localExps = [...state.expenses];
+      const cloudExps = [...(cloud.expenses || [])];
+      const sameTrip = state.trip && cloud.trip && state.trip.id === cloud.trip.id;
+      
+      // Only merge expenses if same active trip on both sides
+      if (sameTrip || !state.trip || !cloud.trip) {
+        const mergedExpenseMap = {};
+        state.expenses.forEach(e => { mergedExpenseMap[e.id] = e; });
+        (cloud.expenses || []).forEach(e => {
+          const existing = mergedExpenseMap[e.id];
+          if (!existing) { mergedExpenseMap[e.id] = e; return; }
+          const existingTime = existing.updatedAt || existing.createdAt || 0;
+          const cloudTime = e.updatedAt || e.createdAt || 0;
+          if (cloudTime >= existingTime) mergedExpenseMap[e.id] = e;
+        });
+        state.expenses = Object.values(mergedExpenseMap);
+      }
+
+      const mergedPastMap = {};
+      state.pastTrips.forEach(pt => { mergedPastMap[pt.id] = pt; });
+      (cloud.pastTrips || []).forEach(pt => {
+        const existing = mergedPastMap[pt.id];
+        if (!existing) { mergedPastMap[pt.id] = pt; return; }
+        // 12 Jul fix: merge same-id past trips at the EXPENSE level (union by
+        // id, newer updatedAt wins). The old whole-object swap on endedAt
+        // silently reverted edits made to historical trips, since editing a
+        // past trip's expenses never changes its endedAt.
+        const merged = {};
+        (existing.expenses || []).forEach(e => { merged[e.id] = e; });
+        (pt.expenses || []).forEach(e => {
+          const ex = merged[e.id];
+          if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
+        });
+        const cloudNewer = (pt.endedAt || pt.createdAt || 0) >= (existing.endedAt || existing.createdAt || 0);
+        const base = cloudNewer ? { ...existing, ...pt } : { ...pt, ...existing };
+        mergedPastMap[pt.id] = { ...base, expenses: Object.values(merged) };
+      });
+      state.pastTrips = Object.values(mergedPastMap);
+
+      // Cards: merge, but respect deletions tracked in deletedCardIds
+      const cloudDeletedCards = cloud.deletedCardIds || [];
+      state.deletedCardIds = [...new Set([...state.deletedCardIds, ...cloudDeletedCards])];
+      const mergedCardMap = {};
+      state.cards.forEach(c => { mergedCardMap[c.id] = c; });
+      (cloud.cards || []).forEach(c => { mergedCardMap[c.id] = c; });
+      // Remove any card that's been deleted on either device
+      state.deletedCardIds.forEach(id => { delete mergedCardMap[id]; });
+      state.cards = Object.values(mergedCardMap);
+
+      // ─── Trip merge ───
+      // When both sides have different active trips, the more recently created one wins.
+      // The losing trip + its expenses get preserved in pastTrips.
+      function saveToPastTrips(trip, expenses) {
+        const idx = state.pastTrips.findIndex(pt => pt.id === trip.id);
+        if (idx >= 0) {
+          // Already in pastTrips — merge expenses to keep the richer version
+          const existing = state.pastTrips[idx];
+          const mergedMap = {};
+          (existing.expenses || []).forEach(e => { mergedMap[e.id] = e; });
+          expenses.forEach(e => {
+            const ex = mergedMap[e.id];
+            if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) mergedMap[e.id] = e;
+          });
+          state.pastTrips[idx] = { ...existing, ...trip, expenses: Object.values(mergedMap) };
+        } else {
+          state.pastTrips.push({ ...trip, expenses, endedAt: Date.now() });
+        }
+      }
+
+      if (cloud.trip && state.trip && cloud.trip.id !== state.trip.id) {
+        const cloudNewer = (cloud.trip.createdAt || 0) >= (state.trip.createdAt || 0);
+        if (cloudNewer) {
+          // Cloud trip wins — preserve local trip + expenses in pastTrips
+          saveToPastTrips(state.trip, localExps);
+          state.trip = cloud.trip;
+          state.expenses = cloudExps;
+        } else {
+          // Local trip wins — preserve cloud trip + expenses in pastTrips
+          saveToPastTrips(cloud.trip, cloudExps);
+          state.expenses = localExps;
+        }
+      } else if (cloud.trip && !state.trip) {
+        state.trip = cloud.trip;
+        state.expenses = cloudExps;
+      } else if (state.trip && cloud.trip && state.trip.id === cloud.trip.id) {
+        // Same trip — expenses already merged above
+        if ((cloud.trip.updatedAt || cloud.trip.createdAt || 0) > (state.trip.updatedAt || state.trip.createdAt || 0)) {
+          state.trip = cloud.trip;
+        }
+      }
+    }
+
+    // ─── Data integrity: resolve zombie trips, remove misplaced expenses, dedupe ───
+    const healMsg = resolveActivePastConflict();
+    cleanMisplacedExpenses();
+    dedupeTrips();
+    if (healMsg) showSyncWarning(healMsg);
+
+    // Save merged data locally and push to cloud
+    saveLocal("trip", state.trip);
+    saveLocal("expenses", state.expenses);
+    saveLocal("cards", state.cards);
+    saveLocal("deleted-card-ids", state.deletedCardIds);
+    saveLocal("past-trips", state.pastTrips);
+    await saveToFirebase();
+    // Only render if user isn't actively typing or editing
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.value.length > 0;
+    const isEditing = state.editingId != null;
+    if (!isTyping && !isEditing) {
+      render();
+    }
+    showSyncStatus("Synced ✓");
+  } catch(e) {
+    console.error("Sync error:", e);
+    if (!navigator.onLine) {
+      showSyncStatus("No network — try again later");
+    } else {
+      showSyncStatus("Sync failed — try again");
+    }
+  }
+}
+
+// ─── Helpers ───────────────────────────────────────────
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmt(n) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+const ZERO_DECIMAL = new Set(["JPY","KRW","VND","IDR","CLP","PYG","UGX","RWF","KMF","XOF","XAF","GNF","BIF","DJF","MGA","MMK","LAK","KHR"]);
+function money(n, cur) {
+  if (ZERO_DECIMAL.has(cur)) return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function todayStr() { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function formatDate(ds) {
+  const [y,m,d] = ds.split("-").map(Number);
+  const dt = new Date(y, m-1, d);
+  return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()] + ", " + d + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
+}
+function detectCategory(desc) {
+  const l = desc.toLowerCase();
+  // 1. Hardcoded keywords
+  for (const c of CATEGORIES) { if (c.name==="Others") continue; for (const k of c.keywords) { if (l.includes(k)) return c.name; } }
+  // 2. Learn from user's past expenses (current trip + past trips)
+  if (l) {
+    const allExps = [...state.expenses];
+    state.pastTrips.forEach(pt => { if (pt.expenses) allExps.push(...pt.expenses); });
+    // Exact match first (case-insensitive)
+    for (const e of allExps) {
+      if (e.description && e.description.toLowerCase() === l && e.category !== "Others") return e.category;
+    }
+    // Partial match: if description contains a past description or vice versa
+    for (const e of allExps) {
+      if (e.description && e.category !== "Others") {
+        const pastDesc = e.description.toLowerCase();
+        if (pastDesc.length >= 3 && (l.includes(pastDesc) || pastDesc.includes(l))) return e.category;
+      }
+    }
+  }
+  return "Others";
+}
+function parseInput(text, cards, trip) {
+  text = text.trim(); if (!text) return null;
+
+  // Detect SGD-only entry
+  const isSgdOnly = /\bsgd\b/i.test(text);
+  let cleanText = text.replace(/\bsgd\b/i, "").trim();
+
+  // Detect date pattern (dd/mm or mm/dd based on trip setting)
+  let parsedDate = null;
+  const dateMatch = cleanText.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+  if (dateMatch) {
+    const a = parseInt(dateMatch[1]), b = parseInt(dateMatch[2]);
+    const fmt = (trip && trip.dateFormat) || "dd/mm";
+    let day, month;
+    if (fmt === "dd/mm") { day = a; month = b; }
+    else { month = a; day = b; }
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const year = new Date().getFullYear();
+      parsedDate = year + "-" + String(month).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+      cleanText = cleanText.replace(dateMatch[0], "").trim();
+    }
+  }
+
+  const amtRe = /\b(\d+(?:\.\d{1,2})?)\b/g;
+  const amounts = []; let m;
+  while ((m = amtRe.exec(cleanText)) !== null) amounts.push({ value:parseFloat(m[1]), index:m.index, length:m[0].length });
+  if (!amounts.length) return null;
+  const sortedCards = [...cards].sort((a,b) => b.shortcut.length - a.shortcut.length);
+  let foundCard=null, cardIdx=-1, cardLen=0;
+  for (const c of sortedCards) {
+    const re = new RegExp("\\b" + c.shortcut.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "\\b", "i");
+    const cm = cleanText.match(re);
+    if (cm) { foundCard=c; cardIdx=cm.index; cardLen=cm[0].length; break; }
+  }
+
+  let foreignAmount, sgdAmount = null;
+
+  if (isSgdOnly) {
+    // SGD-only: first amount is SGD, no foreign
+    foreignAmount = null;
+    sgdAmount = amounts[0].value;
+  } else {
+    foreignAmount = amounts[0].value;
+    if (amounts.length >= 2) sgdAmount = amounts[1].value;
+  }
+
+  // Build description
+  let desc = cleanText;
+  const removals = [];
+  removals.push({ index:amounts[0].index, length:amounts[0].length });
+  if (sgdAmount !== null && amounts.length >= 2 && !isSgdOnly) removals.push({ index:amounts[1].index, length:amounts[1].length });
+  if (cardIdx >= 0) removals.push({ index:cardIdx, length:cardLen });
+  removals.sort((a,b) => b.index - a.index);
+  for (const r of removals) desc = desc.slice(0,r.index) + desc.slice(r.index+r.length);
+  desc = desc.replace(/\s+/g," ").trim();
+
+  return { amount:foreignAmount, sgdAmount:sgdAmount, card:foundCard, description:desc, category:detectCategory(desc), parsedDate:parsedDate, isSgdOnly:isSgdOnly };
+}
+// Escapes &, <, > via textContent, plus quotes — esc() output is used inside
+// double-quoted HTML attributes (e.g. the edit form's value="..."), where
+// unescaped quotes allowed attribute-breakout XSS (fixed 12 Jul).
+function esc(s) { const d=document.createElement("div"); d.textContent=s; return d.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+
+// Shared expense helpers
+function getGroupSize(trip) { return (trip && trip.groupSize) || 1; }
+function isGroupTrip(trip) { return trip && trip.type === "personal" && getGroupSize(trip) > 1; }
+function isSgdOnlyEntry(e) { return e.isSgdOnly || (e.amount === 0 && (e.sgdAmount || 0) > 0); }
+function getMyShare(e, trip) {
+  if (!e.shared) return isSgdOnlyEntry(e) ? 0 : e.amount;
+  if (e.myShare != null) return e.myShare;
+  const gs = e.splitCount || getGroupSize(trip);
+  const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
+  return Math.round(fullAmt / gs * 100) / 100;
+}
+function getMySgdShare(e, trip) {
+  if (!e.shared) return e.sgdAmount || 0;
+  const myAmt = getMyShare(e, trip);
+  const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
+  if (!fullAmt) return 0;
+  return Math.round(myAmt / fullAmt * (e.sgdAmount || 0) * 100) / 100;
+}
+
+// ─── Render ────────────────────────────────────────────
+function render() {
+  const t = state.trip;
+  if (typeof updateUserBar === 'function') updateUserBar();
+  // Header
+  document.getElementById("trip-badge").textContent = t ? (t.type==="work" ? "Work" : "Personal") : "";
+  document.getElementById("trip-name").textContent = t ? t.name + " · " + t.currency : "No active trip";
+  // Nav - show different tabs based on whether trip is active
+  document.getElementById("nav").classList.remove("hidden");
+  const navEl = document.getElementById("nav");
+  if (t) {
+    navEl.innerHTML = '';
+    const tabs = ["expenses","dashboard","cards","history"]; // 12 Jul: Settings reachable in all states (Backup/sync shouldn't need a live trip)
+    tabs.forEach(v => {
+      const label = v === "dashboard" ? "Summary" : v === "cards" ? "Settings" : v.charAt(0).toUpperCase() + v.slice(1);
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.dataset.view = v;
+      if (v === state.currentView) btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        // Auto-return: leaving a reopened (historical) trip via the History
+        // tab parks it back into pastTrips (replaces the old Back to History button).
+        if (v === "history" && state.isHistorical && state.trip) {
+          parkActiveTrip();
+          persist();
+        }
+        state.currentView = v; state.editingId = null;  render();
+      });
+      navEl.appendChild(btn);
+    });
+  } else {
+    navEl.innerHTML = '';
+    ["history","setup","cards"].forEach(v => {
+      const label = v === "setup" ? "New Trip" : v === "cards" ? "Settings" : "History";
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.dataset.view = v;
+      if (v === state.currentView) btn.classList.add("active");
+      btn.addEventListener("click", () => { state.currentView = v; render(); });
+      navEl.appendChild(btn);
+    });
+  }
+  // Views
+  ["expenses","dashboard","cards","history","setup"].forEach(v => {
+    const el = document.getElementById("view-"+v);
+    if (el) el.classList.toggle("hidden", state.currentView !== v);
+  });
+  if (!t && !["setup","history","cards"].includes(state.currentView)) { state.currentView = "history"; render(); return; }
+  if (state.currentView === "expenses") renderExpenses();
+  else if (state.currentView === "dashboard") renderDashboard();
+  else if (state.currentView === "cards") renderCards();
+  else if (state.currentView === "history") renderHistory();
+  else if (state.currentView === "setup") renderSetup();
+
+  // First-run tutorial: the first time a live trip's entry view renders,
+  // so every step describes UI that is actually on screen (12 Jul fix).
+  if (!onboardingQueued && state.currentView === "expenses" && state.trip && !state.isHistorical && !loadLocal("onboarded", false)) {
+    onboardingQueued = true;
+    setTimeout(showOnboarding, 400);
+  }
+}
+
+function renderExpenses() {
+  const t = state.trip; if (!t) return;
+  const c = t.currency;
+  // Group by date
+  const grouped = {};
+  const sorted = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || (a.sortOrder||0) - (b.sortOrder||0));
+  sorted.forEach(e => { if (!grouped[e.date]) grouped[e.date]=[]; grouped[e.date].push(e); });
+
+  let html = '';
+  const isReadOnly = state.isHistorical && !state.editingEnabled;
+
+  // Unlock Editing bar for historical trips
+  if (state.isHistorical) {
+    html += '<div style="padding:12px 16px;display:flex;gap:8px;border-bottom:1px solid var(--border);">';
+    if (!state.editingEnabled) {
+      html += '<button class="export-btn" id="edit-trip-btn" style="flex:1;">Unlock Editing</button>';
+    } else {
+      html += '<div style="flex:1;font-size:12px;color:var(--warn);display:flex;align-items:center;">Editing unlocked — tap an entry to edit</div>';
+      html += '<button class="export-btn" id="lock-trip-btn" style="flex:0 0 auto;padding:8px 16px;">Lock</button>';
+    }
+    html += '</div>';
+  }
+
+  // Quick entry — only for active trips or historical with editing enabled
+  if (!isReadOnly) {
+    html += '<div class="quick-entry">';
+    html += '<div class="input-row">';
+    html += `<input class="main-input" id="expense-input" type="text" placeholder="e.g. 15 lunch cash" ${state.pendingExpense ? 'disabled' : ''}>`;
+    html += '</div>';
+    // Claim/Shared prompt
+    if (state.pendingExpense) {
+      const pe = state.pendingExpense;
+      html += '<div class="claim-prompt">';
+      const peAmtText = isSgdOnlyEntry(pe) ? `SGD ${money(pe.sgdAmount||0, "SGD")}` : `${c} ${money(pe.amount, c)}`;
+      if (state.pendingType === "claimable") {
+        html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Claimable?</span>`;
+        html += '<div class="claim-buttons">';
+        html += '<button class="claim-yes" id="claim-yes">Yes</button>';
+        html += '<button class="claim-no" id="claim-no">No</button>';
+      } else if (state.pendingType === "shared") {
+        html += `<span class="claim-text"><span class="claim-amount">${peAmtText}</span> ${esc(pe.description)} — Shared?</span>`;
+        html += '<div class="claim-buttons">';
+        html += '<button class="claim-yes" id="shared-yes">Yes</button>';
+        html += '<button class="claim-no" id="shared-no">No</button>';
+      }
+      html += '</div></div>';
+    }
+    // Preview
+    html += '<div class="preview" id="preview"></div>';
+    html += '</div>';
+  }
+
+  // Expenses list
+  if (Object.keys(grouped).length === 0) {
+    html += '<div class="empty">No expenses yet.</div>';
+  } else {
+    for (const [date, exps] of Object.entries(grouped)) {
+      const dayTotal = exps.filter(e=>!state.deletedIds[e.id]).reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+      const daySgdOnly = exps.filter(e=>!state.deletedIds[e.id] && isSgdOnlyEntry(e)).reduce((s,e) => s + (e.sgdAmount||0), 0);
+      const parts = [];
+      if (dayTotal > 0 || daySgdOnly === 0) parts.push(`${c} ${money(dayTotal, c)}`);
+      if (daySgdOnly > 0) parts.push(`SGD ${money(daySgdOnly, "SGD")}`);
+      const dayTotalText = parts.join(" + ");
+      html += `<div class="day-header" data-dayheader="${date}"><span class="day-date">${formatDate(date)}</span><span class="day-total">${dayTotalText}</span></div>`;
+      for (const e of exps) {
+        if (state.deletedIds[e.id]) {
+          html += `<div class="expense-deleted"><span>${esc(e.description)}</span><button class="undo-btn" data-undo="${e.id}">Undo</button></div>`;
+          continue;
+        }
+        if (state.editingId === e.id && !isReadOnly) {
+          html += renderEditForm(e);
+          continue;
+        }
+        if (isReadOnly) {
+          // Read-only item — no swipe, no drag
+          html += `<div class="expense-item" data-id="${e.id}" data-date="${e.date}">`;
+        } else {
+          html += `<div class="swipe-container" data-swipe="${e.id}">`;
+          html += `<div class="swipe-delete-bg"><span>Delete</span></div>`;
+          html += `<div class="expense-item" data-edit="${e.id}" data-id="${e.id}" data-date="${e.date}">`;
+        }
+        html += '<div class="expense-left">';
+        html += `<span class="expense-desc">${esc(e.description || "—")}</span>`;
+        html += '<div class="expense-meta">';
+        if (e.cardName) html += `<span class="tag">${esc(e.cardName)}</span>`;
+        html += `<span class="tag-cat">${esc(e.category)}</span>`;
+        if (e.claimable) html += '<span class="tag-claim">Claim</span>';
+        if (e.shared) html += `<span class="tag-shared">÷${Number(e.splitCount) || getGroupSize(state.trip)}</span>`;
+        html += '</div></div>';
+        html += '<div class="expense-right">';
+        if (isSgdOnlyEntry(e)) {
+          html += `<span class="expense-amount">SGD ${money(e.sgdAmount||0, "SGD")}</span>`;
+        } else {
+          html += `<span class="expense-amount">${c} ${money(e.amount, c)}</span>`;
+          if (e.sgdAmount) {
+            html += `<span class="expense-sgd">SGD ${money(e.sgdAmount, "SGD")}</span>`;
+          } else {
+            html += `<span class="expense-sgd sgd-pending">SGD pending</span>`;
+          }
+        }
+        html += '</div>';
+        if (!isReadOnly) {
+          html += `<span class="drag-handle" data-drag="${e.id}">≡</span>`;
+          html += '</div></div>';
+        } else {
+          html += '</div>';
+        }
+      }
+    }
+  }
+
+  // Bottom actions (Export Excel moved to Summary view — 12 Jul UX)
+  if (state.expenses.length > 0 && !state.isHistorical) {
+    html += '<div class="bottom-actions">';
+    html += '<button class="end-trip-btn" id="end-trip">End Trip</button>';
+    html += '</div>';
+  }
+
+  document.getElementById("view-expenses").innerHTML = html;
+  bindExpenseEvents();
+}
+
+function renderEditForm(e) {
+  let html = '<div class="expense-edit">';
+  html += '<div class="edit-grid">';
+  html += `<input class="edit-input" id="edit-date" type="date" value="${e.date}">`;
+  const amtStep = (state.trip && ZERO_DECIMAL.has(state.trip.currency)) ? "1" : "0.01";
+  html += `<input class="edit-input" id="edit-desc" value="${esc(e.description)}" placeholder="Description">`;
+  html += `<input class="edit-input" id="edit-amount" type="number" inputmode="decimal" step="${amtStep}" value="${e.amount}" placeholder="Amount">`;
+  html += `<input class="edit-input" id="edit-sgd" type="number" inputmode="decimal" step="0.01" value="${e.sgdAmount||''}" placeholder="SGD Amount">`;
+  html += '<select class="edit-select" id="edit-card">';
+  html += '<option value="">No card</option>';
+  [...state.cards].sort((a,b) => a.name.localeCompare(b.name)).forEach(c => { html += `<option value="${c.id}" ${e.card===c.id?'selected':''}>${esc(c.name)}</option>`; });
+  html += '</select>';
+  html += '<select class="edit-select" id="edit-category">';
+  CATEGORIES.forEach(c => { html += `<option value="${c.name}" ${e.category===c.name?'selected':''}>${c.name}</option>`; });
+  html += '</select>';
+  if (state.trip && state.trip.type === "work") {
+    html += `<label class="edit-claim-label"><input type="checkbox" id="edit-claimable" ${e.claimable?'checked':''}> Claimable</label>`;
+  }
+  if (isGroupTrip(state.trip)) {
+    const gs = e.splitCount || getGroupSize(state.trip);
+    const myShare = getMyShare(e, state.trip);
+    const fullAmt = isSgdOnlyEntry(e) ? (e.sgdAmount || 0) : e.amount;
+    const displayShare = e.shared ? myShare : Math.round(fullAmt / gs * 100) / 100;
+    const shareCur = isSgdOnlyEntry(e) ? "SGD" : state.trip.currency;
+    const shareIsZero = ZERO_DECIMAL.has(shareCur);
+    const shareVal = shareIsZero ? Math.round(displayShare) : displayShare.toFixed(2);
+    const shareStep = shareIsZero ? "1" : "0.01";
+    html += `<label class="edit-claim-label"><input type="checkbox" id="edit-shared" ${e.shared?'checked':''}> Shared</label>`;
+    html += `<div id="shared-fields" style="${e.shared?'':'display:none;'}">`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">Split ÷</label><select class="edit-select" id="edit-split-count" style="width:60px;">`;
+    for (let i = 2; i <= 5; i++) html += `<option value="${i}" ${gs===i?'selected':''}>${i}</option>`;
+    html += `</select></div>`;
+    html += `<div class="edit-row"><label style="font-size:11px;color:var(--text-muted);">My share</label><input class="edit-input" id="edit-my-share" type="number" inputmode="decimal" step="${shareStep}" value="${shareVal}" style="width:80px;"></div>`;
+    html += `</div>`;
+  }
+  html += '</div>';
+  html += '<div class="edit-actions">';
+  html += `<button class="save-btn" id="save-edit" data-id="${e.id}">Save</button>`;
+  html += '<button class="cancel-btn" id="cancel-edit">Cancel</button>';
+  html += '</div></div>';
+  return html;
+}
+
+function bindExpenseEvents() {
+  const isReadOnly = state.isHistorical && !state.editingEnabled;
+
+  // Historical trip buttons
+  const editTripBtn = document.getElementById("edit-trip-btn");
+  if (editTripBtn) editTripBtn.addEventListener("click", () => {
+    // Non-destructive unlock — no confirm needed (12 Jul: the friction was
+    // inverted; destructive End Trip had none, harmless unlock had one)
+    state.editingEnabled = true;
+    render();
+  });
+  const lockTripBtn = document.getElementById("lock-trip-btn");
+  if (lockTripBtn) lockTripBtn.addEventListener("click", () => {
+    state.editingEnabled = false;
+    state.editingId = null;
+    render();
+  });
+
+  const input = document.getElementById("expense-input");
+  if (input) {
+    input.addEventListener("input", () => updatePreview(input.value));
+    input.addEventListener("keydown", (ev) => { if (ev.key==="Enter") { ev.preventDefault(); submitExpense(input.value); } });
+    input.addEventListener("focus", () => { setTimeout(() => { input.scrollIntoView({ behavior:"smooth", block:"nearest" }); }, 300); });
+  }
+  const cy = document.getElementById("claim-yes");
+  const cn = document.getElementById("claim-no");
+  if (cy) cy.addEventListener("click", () => resolveClaim(true));
+  if (cn) cn.addEventListener("click", () => resolveClaim(false));
+  const sy = document.getElementById("shared-yes");
+  const sn = document.getElementById("shared-no");
+  if (sy) sy.addEventListener("click", () => resolveShared(true));
+  if (sn) sn.addEventListener("click", () => resolveShared(false));
+  document.querySelectorAll("[data-edit]").forEach(el => {
+    el.addEventListener("click", (ev) => {
+      if (isReadOnly) return;
+      if (ev.target.classList.contains("drag-handle")) return;
+      if (state.isDragging || state.isSwiping) return;
+      state.editingId = el.dataset.edit; render();
+    });
+  });
+  document.querySelectorAll("[data-undo]").forEach(el => {
+    el.addEventListener("click", () => undoDelete(el.dataset.undo));
+  });
+  // Drag and drop + swipe only when not read-only
+  if (!isReadOnly) {
+    initDragAndDrop();
+    initSwipeToDelete();
+  }
+  const saveEdit = document.getElementById("save-edit");
+  if (saveEdit) saveEdit.addEventListener("click", () => {
+    const id = saveEdit.dataset.id;
+    const idx = state.expenses.findIndex(e => e.id === id);
+    if (idx >= 0) {
+      const cardId = document.getElementById("edit-card").value;
+      const amtRaw = document.getElementById("edit-amount").value.trim();
+      const sgdRaw = document.getElementById("edit-sgd").value.trim();
+      const newAmt = amtRaw === "" ? 0 : parseFloat(amtRaw);
+      const newSgd = sgdRaw === "" ? null : parseFloat(sgdRaw);
+      if (isNaN(newAmt) || newAmt < 0 || (newSgd !== null && (isNaN(newSgd) || newSgd < 0))) { alert("Amounts must be valid numbers."); return; }
+      if (newAmt === 0 && !(newSgd > 0)) { alert("Enter a trip-currency amount, an SGD amount, or both."); return; }
+      state.expenses[idx] = {
+        ...state.expenses[idx],
+        date: document.getElementById("edit-date").value || state.expenses[idx].date,
+        description: document.getElementById("edit-desc").value,
+        amount: newAmt,
+        isSgdOnly: newAmt === 0 && newSgd > 0,
+        sgdAmount: newSgd,
+        card: cardId || null,
+        cardName: state.cards.find(c=>c.id===cardId)?.name || "Unknown",
+        category: document.getElementById("edit-category").value,
+        claimable: document.getElementById("edit-claimable")?.checked || false,
+        updatedAt: Date.now(),
+      };
+      // Save shared fields for group trips
+      if (isGroupTrip(state.trip)) {
+        const isShared = document.getElementById("edit-shared")?.checked || false;
+        state.expenses[idx].shared = isShared;
+        if (isShared) {
+          const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
+          const ms = parseFloat(document.getElementById("edit-my-share")?.value);
+          state.expenses[idx].splitCount = sc;
+          const fullAmt = (isSgdOnlyEntry(state.expenses[idx])) ? (state.expenses[idx].sgdAmount || 0) : state.expenses[idx].amount;
+          const evenShare = Math.round(fullAmt / sc * 100) / 100;
+          state.expenses[idx].myShare = (!isNaN(ms) && Math.abs(ms - evenShare) > 0.01) ? ms : null;
+        } else {
+          state.expenses[idx].shared = false;
+          state.expenses[idx].splitCount = null;
+          state.expenses[idx].myShare = null;
+        }
+      }
+      persist();
+    }
+    state.editingId = null;
+    const scrollToId = id;
+    render();
+    setTimeout(() => {
+      const el = document.querySelector(`[data-id="${scrollToId}"]`);
+      if (el) el.scrollIntoView({ behavior:"smooth", block:"center" });
+    }, 50);
+  });
+  const cancelEdit = document.getElementById("cancel-edit");
+  if (cancelEdit) cancelEdit.addEventListener("click", () => { state.editingId = null; render(); });
+  // Shared checkbox toggle
+  const sharedCheck = document.getElementById("edit-shared");
+  if (sharedCheck) {
+    const recalcShare = () => {
+      const amt = parseFloat(document.getElementById("edit-amount")?.value) || 0;
+      const sgdAmt = parseFloat(document.getElementById("edit-sgd")?.value) || 0;
+      const sc = parseInt(document.getElementById("edit-split-count")?.value) || getGroupSize(state.trip);
+      const isSgdOnly = amt === 0 && sgdAmt > 0;
+      const fullAmt = amt > 0 ? amt : sgdAmt;
+      const shareCur = isSgdOnly ? "SGD" : state.trip.currency;
+      const share = fullAmt / sc;
+      const msField = document.getElementById("edit-my-share");
+      if (msField) msField.value = ZERO_DECIMAL.has(shareCur) ? Math.round(share) : share.toFixed(2);
+    };
+    sharedCheck.addEventListener("change", () => {
+      const fields = document.getElementById("shared-fields");
+      if (fields) fields.style.display = sharedCheck.checked ? "" : "none";
+      if (sharedCheck.checked) recalcShare();
+    });
+    const splitSelect = document.getElementById("edit-split-count");
+    if (splitSelect) splitSelect.addEventListener("change", recalcShare);
+  }
+  const endTrip = document.getElementById("end-trip");
+  if (endTrip) endTrip.addEventListener("click", showEndTripModal);
+}
+
+// ─── End-trip modal (17 Jul): export nudge + how long data survives per device ───
+function showEndTripModal() {
+  if (document.getElementById("endtrip-modal")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "endtrip-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:1500;display:flex;align-items:center;justify-content:center;padding:24px;";
+  wrap.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:360px;width:100%;padding:22px;">
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">End this trip?</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;">It moves to History — you can reopen it anytime. Exporting a copy first is recommended.</div>
+      <div style="font-size:11px;color:var(--text-muted);line-height:1.6;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
+        <strong style="color:var(--text);">How long your data stays on this device</strong><br>
+        iPhone — Safari tab: about 7 days if you don't open the app<br>
+        iPhone — Added to Home Screen: until you remove the app<br>
+        Android: until you clear browser data<br>
+        Signed in: also kept in the cloud, on every device you use
+      </div>
+      <button class="save-cards-btn" id="endtrip-export" style="margin-top:0;">Export Excel & End Trip</button>
+      <button class="backup-btn" id="endtrip-plain" style="width:100%;margin-top:8px;">End Without Exporting</button>
+      <button class="backup-btn" id="endtrip-cancel" style="width:100%;margin-top:8px;background:none;">Cancel</button>
+    </div>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  document.getElementById("endtrip-cancel").addEventListener("click", close);
+  document.getElementById("endtrip-plain").addEventListener("click", () => { close(); finishEndTrip(); });
+  document.getElementById("endtrip-export").addEventListener("click", async () => {
+    try {
+      await generateExcel();
+      close();
+      finishEndTrip();
+    } catch(e) {
+      console.error("Export failed:", e);
+      alert("Export failed: " + (e.message || "unknown error") + "\nThe trip was NOT ended — you can try again.");
+    }
+  });
+}
+function finishEndTrip() {
+  parkActiveTrip(); // merge-by-id, no duplicate trips (12 Jul fix)
+  persist(); state.currentView = "history"; render();
+}
+
+function updatePreview(val) {
+  const prev = document.getElementById("preview");
+  if (!prev || state.pendingExpense) return;
+  const p = parseInput(val, state.cards, state.trip);
+  if (!p || (!p.amount && !p.isSgdOnly)) {
+    // 12 Jul: unparseable non-empty input used to fail silently
+    prev.innerHTML = (val && val.trim())
+      ? '<span class="preview-desc" style="color:var(--text-muted);">Start with an amount — e.g. "15 coffee cash"</span>'
+      : '';
+    return;
+  }
+  state.lastPreview = p;
+  const c = state.trip.currency;
+  let h = '';
+  if (p.parsedDate) h += `<span class="preview-date">${formatDate(p.parsedDate)}</span>`;
+  if (p.isSgdOnly) {
+    h += `<span class="preview-amount">SGD ${money(p.sgdAmount, "SGD")}</span>`;
+  } else {
+    h += `<span class="preview-amount">${c} ${money(p.amount, c)}</span>`;
+    if (p.sgdAmount) {
+      h += `<span class="preview-sgd">SGD ${money(p.sgdAmount, "SGD")}</span>`;
+      h += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
+    }
+  }
+  if (p.card) h += `<span class="preview-card">${esc(p.card.name)}</span>`;
+  h += `<span class="preview-cat">${esc(p.category)}</span>`;
+  if (p.description) h += `<span class="preview-desc">${esc(p.description)}</span>`;
+  h += `<button class="preview-submit" id="preview-submit">✓</button>`;
+  prev.innerHTML = h;
+  // Bind submit
+  bindPreviewSubmit();
+  // Bind swap
+  const swapBtn = document.getElementById("swap-amounts");
+  if (swapBtn) swapBtn.addEventListener("click", () => {
+    if (state.lastPreview && state.lastPreview.sgdAmount) {
+      const tmp = state.lastPreview.amount;
+      state.lastPreview.amount = state.lastPreview.sgdAmount;
+      state.lastPreview.sgdAmount = tmp;
+      state.swapped = !state.swapped;
+      // Re-render preview without re-parsing
+      const lp = state.lastPreview;
+      let h2 = '';
+      if (lp.parsedDate) h2 += `<span class="preview-date">${formatDate(lp.parsedDate)}</span>`;
+      h2 += `<span class="preview-amount">${c} ${money(lp.amount, c)}</span>`;
+      h2 += `<span class="preview-sgd">SGD ${money(lp.sgdAmount, "SGD")}</span>`;
+      h2 += `<button class="swap-btn" id="swap-amounts">⇄</button>`;
+      if (lp.card) h2 += `<span class="preview-card">${esc(lp.card.name)}</span>`;
+      h2 += `<span class="preview-cat">${esc(lp.category)}</span>`;
+      if (lp.description) h2 += `<span class="preview-desc">${esc(lp.description)}</span>`;
+      h2 += `<button class="preview-submit" id="preview-submit">✓</button>`;
+      prev.innerHTML = h2;
+      bindPreviewSubmit();
+      document.getElementById("swap-amounts")?.addEventListener("click", arguments.callee);
+    }
+  });
+}
+
+function bindPreviewSubmit() {
+  const btn = document.getElementById("preview-submit");
+  if (btn) btn.addEventListener("click", () => {
+    const input = document.getElementById("expense-input");
+    if (input) submitExpense(input.value);
+  });
+}
+
+function submitExpense(val) {
+  // Use swapped preview if available, otherwise parse fresh
+  const p = state.lastPreview || parseInput(val, state.cards, state.trip);
+  if (!p || (!p.amount && !p.isSgdOnly)) return;
+  const expDate = p.parsedDate || todayStr();
+  // Shift existing entries for this date down to make room at top
+  state.expenses.filter(e => e.date === expDate).forEach(e => { e.sortOrder = (e.sortOrder || 0) + 1; });
+  const expense = {
+    id: genId(), date: expDate, amount: p.isSgdOnly ? 0 : p.amount, sgdAmount: p.sgdAmount,
+    currency: state.trip.currency, description: p.description,
+    card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
+    category: p.category, claimable: false, createdAt: Date.now(), updatedAt: Date.now(), sortOrder: 0,
+    isSgdOnly: p.isSgdOnly || false,
+  };
+  state.lastPreview = null;
+  state.swapped = false;
+  // Add shared field default
+  expense.shared = false;
+  if (state.trip.type === "work") {
+    state.pendingExpense = expense;
+    state.pendingType = "claimable";
+    render();
+  } else if (isGroupTrip(state.trip)) {
+    state.pendingExpense = expense;
+    state.pendingType = "shared";
+    render();
+  } else {
+    state.expenses.unshift(expense);
+    persist(); render();
+  }
+}
+
+function resolveClaim(claimable) {
+  if (!state.pendingExpense) return;
+  state.pendingExpense.claimable = claimable;
+  state.expenses.unshift(state.pendingExpense);
+  state.pendingExpense = null;
+  state.pendingType = null;
+  persist(); render();
+  setTimeout(() => { const inp = document.getElementById("expense-input"); if(inp) inp.focus(); }, 50);
+}
+
+function resolveShared(shared) {
+  if (!state.pendingExpense) return;
+  state.pendingExpense.shared = shared;
+  state.expenses.unshift(state.pendingExpense);
+  state.pendingExpense = null;
+  state.pendingType = null;
+  persist(); render();
+  setTimeout(() => { const inp = document.getElementById("expense-input"); if(inp) inp.focus(); }, 50);
+}
+
+function deleteExpense(id) {
+  state.deletedIds[id] = true;
+  if (deleteTimers[id]) clearTimeout(deleteTimers[id]);
+  deleteTimers[id] = setTimeout(() => {
+    state.expenses = state.expenses.filter(e => e.id !== id);
+    delete state.deletedIds[id]; delete deleteTimers[id];
+    persist(); render();
+  }, 4000);
+  render();
+}
+function undoDelete(id) {
+  if (deleteTimers[id]) { clearTimeout(deleteTimers[id]); delete deleteTimers[id]; }
+  delete state.deletedIds[id]; render();
+}
+
+async function generateExcel() {
+  const t = state.trip;
+  const c = t.currency;
+  const exps = state.expenses.filter(e => !state.deletedIds[e.id]).sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0)); // 12 Jul: exclude undo-window deletes
+  const isWork = t.type === "work";
+  const isGroup = isGroupTrip(t);
+  const isZero = ZERO_DECIMAL.has(c);
+  const cFmt = isZero ? '#,##0' : '#,##0.00';
+  const sFmt = '#,##0.00';
+
+  const wb = new ExcelJS.Workbook();
+  const hdrFont = { bold: true, size: 14, color: { argb: 'FF2563EB' } };
+  const secFont = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+  const secFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+  const hdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+  const altFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FF' } };
+  const sumFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+  const thinBorder = { top:{style:'thin',color:{argb:'FFD0D0D0'}}, bottom:{style:'thin',color:{argb:'FFD0D0D0'}}, left:{style:'thin',color:{argb:'FFD0D0D0'}}, right:{style:'thin',color:{argb:'FFD0D0D0'}} };
+  const boldFont = { bold: true, size: 10 };
+  const regFont = { size: 10 };
+
+  // ─── Sheet 1: Summary ───
+  const ws1 = wb.addWorksheet('Summary');
+  ws1.columns = [{ width: 22 }, { width: 18 }, { width: 18 }];
+
+  // Trip header
+  let r = 1;
+  ws1.getCell(`A${r}`).value = t.name;
+  ws1.getCell(`A${r}`).font = hdrFont;
+  ws1.mergeCells(`A${r}:C${r}`);
+  r++;
+  const meta = [c, t.type === 'work' ? 'Work' : 'Personal'];
+  if (isGroup) meta.push('Group: ' + getGroupSize(t));
+  ws1.getCell(`A${r}`).value = meta.join(' · ');
+  ws1.getCell(`A${r}`).font = { size: 10, color: { argb: 'FF666666' } };
+  ws1.mergeCells(`A${r}:C${r}`);
+  r++;
+  const dates = [...new Set(exps.map(e => e.date))].sort();
+  if (dates.length) {
+    ws1.getCell(`A${r}`).value = formatDate(dates[0]) + ' – ' + formatDate(dates[dates.length-1]);
+    ws1.getCell(`A${r}`).font = { size: 10, color: { argb: 'FF666666' } };
+  }
+  r += 2;
+
+  // Totals section
+  function addSectionHeader(ws, row, label) {
+    ws.getCell(`A${row}`).value = label;
+    ws.getCell(`A${row}`).font = secFont;
+    ['A','B','C'].forEach(col => { ws.getCell(`${col}${row}`).fill = secFill; ws.getCell(`${col}${row}`).border = thinBorder; });
+    return row + 1;
+  }
+  function addDataRow(ws, row, label, val1, val2, bold) {
+    ws.getCell(`A${row}`).value = label;
+    ws.getCell(`A${row}`).font = bold ? boldFont : regFont;
+    if (val1 != null) {
+      ws.getCell(`B${row}`).value = val1;
+      ws.getCell(`B${row}`).numFmt = cFmt;
+    } else {
+      ws.getCell(`B${row}`).value = '-';
+    }
+    ws.getCell(`B${row}`).font = bold ? boldFont : regFont;
+    if (val2 != null) {
+      ws.getCell(`C${row}`).value = val2;
+      ws.getCell(`C${row}`).numFmt = sFmt;
+    } else {
+      ws.getCell(`C${row}`).value = 'pending';
+      ws.getCell(`C${row}`).font = { size: 9, italic: true, color: { argb: 'FFCC0000' } };
+    }
+    if (val2 != null) ws.getCell(`C${row}`).font = bold ? boldFont : regFont;
+    ['A','B','C'].forEach(col => { ws.getCell(`${col}${row}`).border = thinBorder; });
+    return row + 1;
+  }
+
+  r = addSectionHeader(ws1, r, 'Totals');
+  // Sub-header
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = 'SGD';
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+
+  const totalF = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+  const totalSgd = exps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const pendingSgdCount = exps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
+  const sgdLabel = pendingSgdCount > 0 ? `SGD (${pendingSgdCount} pending)` : 'SGD';
+
+  // Update sub-header with pending note
+  ws1.getCell(`C${r-1}`).value = sgdLabel;
+
+  if (isGroup) {
+    const myShareF = exps.reduce((s,e) => s + getMyShare(e, t), 0);
+    const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, t), 0);
+    const othersShareF = totalF - myShareF;
+    const othersSgdShare = totalSgd - mySgdShare;
+    r = addDataRow(ws1, r, 'My Share', myShareF, pendingSgdCount ? null : mySgdShare, true);
+    r = addDataRow(ws1, r, "Others' Share", othersShareF, pendingSgdCount ? null : othersSgdShare, false);
+    r = addDataRow(ws1, r, 'Total Paid', totalF, pendingSgdCount ? null : totalSgd, false);
+  } else {
+    r = addDataRow(ws1, r, 'Total', totalF, pendingSgdCount ? null : totalSgd, true);
+  }
+  if (isWork) {
+    const claimable = exps.filter(e => e.claimable);
+    const claimF = claimable.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const claimSgd = claimable.reduce((s,e) => s + (e.sgdAmount||0), 0);
+    r = addDataRow(ws1, r, 'Claimable', claimF, claimSgd, false);
+    r = addDataRow(ws1, r, 'Personal', totalF - claimF, totalSgd - claimSgd, false);
+  }
+  r++;
+
+  // Category breakdown
+  r = addSectionHeader(ws1, r, 'By Category');
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = pendingSgdCount ? sgdLabel : 'SGD';
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+  const byCat = {};
+  exps.forEach(e => { const n = e.category||"Others"; byCat[n] = (byCat[n]||0) + (isSgdOnlyEntry(e) ? 0 : e.amount); });
+  const byCatSgd = {};
+  exps.forEach(e => { const n = e.category||"Others"; byCatSgd[n] = (byCatSgd[n]||0) + (e.sgdAmount||0); });
+  Object.entries(byCat).sort((a,b) => b[1]-a[1]).forEach(([n,a], i) => {
+    r = addDataRow(ws1, r, n, a, pendingSgdCount ? null : (byCatSgd[n]||0), false);
+    if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
+  });
+  r++;
+
+  // Card breakdown
+  r = addSectionHeader(ws1, r, 'By Card');
+  ws1.getCell(`B${r}`).value = c; ws1.getCell(`C${r}`).value = pendingSgdCount ? sgdLabel : 'SGD';
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+  const byCard = {};
+  exps.forEach(e => { const n = e.cardName||"Unknown"; byCard[n] = (byCard[n]||0) + (isSgdOnlyEntry(e) ? 0 : e.amount); });
+  const byCardSgd = {};
+  exps.forEach(e => { const n = e.cardName||"Unknown"; byCardSgd[n] = (byCardSgd[n]||0) + (e.sgdAmount||0); });
+  Object.entries(byCard).sort((a,b) => b[1]-a[1]).forEach(([n,a], i) => {
+    r = addDataRow(ws1, r, n, a, pendingSgdCount ? null : (byCardSgd[n]||0), false);
+    if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
+  });
+  r++;
+
+  // Daily breakdown
+  const col2Label = isGroup ? 'My Share' : c;
+  const col3Label = isGroup ? 'Paid' : 'SGD';
+  r = addSectionHeader(ws1, r, 'By Day');
+  ws1.getCell(`B${r}`).value = col2Label; ws1.getCell(`C${r}`).value = col3Label;
+  ws1.getCell(`B${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ws1.getCell(`C${r}`).font = { bold: true, size: 9, color: { argb: 'FF666666' } };
+  ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r}`).border = thinBorder; ws1.getCell(`${col}${r}`).fill = sumFill; });
+  r++;
+  const allDates = [...new Set(exps.map(e => e.date))].sort((a,b) => a.localeCompare(b));
+  allDates.forEach((date, i) => {
+    const dayExps = exps.filter(e => e.date === date);
+    const dayF = dayExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount||0), 0);
+    if (isGroup) {
+      const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, t), 0);
+      r = addDataRow(ws1, r, formatDate(date), dayMyShare, dayF, false);
+    } else {
+      r = addDataRow(ws1, r, formatDate(date), dayF, daySgd, false);
+    }
+    if (i % 2 === 0) ['A','B','C'].forEach(col => { ws1.getCell(`${col}${r-1}`).fill = altFill; });
+  });
+
+  // ─── Sheet 2: Expenses ───
+  const ws2 = wb.addWorksheet('Expenses');
+  const expHeaders = ['Date', 'Description', 'Amount', 'Currency', 'SGD', 'Card', 'Category'];
+  if (isWork) expHeaders.push('Claimable');
+  if (isGroup) expHeaders.push('Shared', 'My Share', 'My Share SGD');
+
+  const headerRow = ws2.addRow(expHeaders);
+  headerRow.eachCell(cell => {
+    cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    cell.fill = hdrFill;
+    cell.border = thinBorder;
+    cell.alignment = { horizontal: 'center' };
+  });
+
+  exps.forEach((e, i) => {
+    const rowData = [
+      e.date,
+      e.description || '',
+      isSgdOnlyEntry(e) ? '' : e.amount,
+      isSgdOnlyEntry(e) ? 'SGD' : c,
+      e.sgdAmount || '',
+      e.cardName || '',
+      e.category || '',
+    ];
+    if (isWork) rowData.push(e.claimable ? 'Yes' : 'No');
+    if (isGroup) {
+      rowData.push(e.shared ? 'Yes' : 'No');
+      rowData.push(getMyShare(e, t));
+      rowData.push(getMySgdShare(e, t));
+    }
+    const row = ws2.addRow(rowData);
+    row.eachCell(cell => {
+      cell.font = regFont;
+      cell.border = thinBorder;
+    });
+    if (i % 2 === 0) row.eachCell(cell => { cell.fill = altFill; });
+  });
+
+  // Column widths
+  ws2.columns = [
+    { width: 12 }, { width: 28 }, { width: 14 }, { width: 8 }, { width: 12 },
+    { width: 16 }, { width: 14 },
+    ...(isWork ? [{ width: 10 }] : []),
+    ...(isGroup ? [{ width: 8 }, { width: 14 }, { width: 14 }] : []),
+  ];
+
+  // Number formats for amount columns
+  for (let i = 2; i <= exps.length + 1; i++) {
+    const amtCell = ws2.getCell(i, 3);
+    if (amtCell.value !== '') amtCell.numFmt = cFmt;
+    const sgdCell = ws2.getCell(i, 5);
+    if (sgdCell.value !== '') sgdCell.numFmt = sFmt;
+    if (isGroup) {
+      ws2.getCell(i, expHeaders.indexOf('My Share') + 1).numFmt = cFmt;
+      ws2.getCell(i, expHeaders.indexOf('My Share SGD') + 1).numFmt = sFmt;
+    }
+  }
+
+  // Auto-filter
+  ws2.autoFilter = { from: 'A1', to: String.fromCharCode(64 + expHeaders.length) + '1' };
+
+  // ─── Sheet 3: Settlement or Claimable ───
+  if (isGroup) {
+    const ws3 = wb.addWorksheet('Settlement');
+    ws3.columns = [{ width: 14 }, { width: 28 }, { width: 16 }, { width: 18 }];
+    let sr = 1;
+    ws3.getCell(`A${sr}`).value = 'Settlement';
+    ws3.getCell(`A${sr}`).font = hdrFont;
+    ws3.mergeCells(`A${sr}:D${sr}`);
+    sr++;
+    const sharedExps = exps.filter(e => e.shared);
+    const totalSharedPaid = sharedExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const totalMyShareShared = sharedExps.reduce((s,e) => s + getMyShare(e, t), 0);
+    const othersOwe = totalSharedPaid - totalMyShareShared;
+    const othersOweSgd = sharedExps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, t) + s, 0);
+
+    ws3.getCell(`A${sr}`).value = 'Others owe you';
+    ws3.getCell(`A${sr}`).font = boldFont;
+    ws3.getCell(`B${sr}`).value = othersOwe;
+    ws3.getCell(`B${sr}`).numFmt = cFmt;
+    ws3.getCell(`B${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
+    const sharedPendingSgd = sharedExps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
+    if (sharedPendingSgd === 0) {
+      ws3.getCell(`C${sr}`).value = 'SGD';
+      ws3.getCell(`D${sr}`).value = othersOweSgd;
+      ws3.getCell(`D${sr}`).numFmt = sFmt;
+      ws3.getCell(`D${sr}`).font = { bold: true, size: 11, color: { argb: 'FF059669' } };
+    } else {
+      ws3.getCell(`C${sr}`).value = `SGD (${sharedPendingSgd} pending)`;
+      ws3.getCell(`C${sr}`).font = { size: 9, italic: true, color: { argb: 'FFCC0000' } };
+      ws3.mergeCells(`C${sr}:D${sr}`);
+    }
+    sr += 2;
+
+    const settleHeaders = ['Date', 'Description', 'Total', 'Split'];
+    const sHdrRow = ws3.addRow(settleHeaders);
+    sr++;
+    sHdrRow.eachCell(cell => {
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = hdrFill;
+      cell.border = thinBorder;
+    });
+
+    sharedExps.sort((a,b) => a.date.localeCompare(b.date)).forEach((e, i) => {
+      const gs = e.splitCount || getGroupSize(t);
+      const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
+      const isCustom = e.myShare != null;
+      const splitText = isCustom ? `My: ${money(getMyShare(e,t), c)}` : `÷${gs} = ${money(dispAmt/gs, isSgdOnlyEntry(e)?'SGD':c)} each`;
+      const row = ws3.addRow([e.date, e.description, dispAmt, splitText]);
+      row.eachCell(cell => { cell.font = regFont; cell.border = thinBorder; });
+      row.getCell(3).numFmt = isSgdOnlyEntry(e) ? sFmt : cFmt;
+      if (i % 2 === 0) row.eachCell(cell => { cell.fill = altFill; });
+    });
+  } else if (isWork) {
+    const ws3 = wb.addWorksheet('Claimable');
+    ws3.columns = [{ width: 14 }, { width: 28 }, { width: 14 }, { width: 12 }, { width: 14 }];
+    let sr = 1;
+    ws3.getCell(`A${sr}`).value = 'Claimable Expenses';
+    ws3.getCell(`A${sr}`).font = hdrFont;
+    ws3.mergeCells(`A${sr}:E${sr}`);
+    sr++;
+    const claimExps = exps.filter(e => e.claimable);
+    const claimTotal = claimExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const claimSgd = claimExps.reduce((s,e) => s + (e.sgdAmount||0), 0);
+    ws3.getCell(`A${sr}`).value = 'Total Claimable';
+    ws3.getCell(`A${sr}`).font = boldFont;
+    ws3.getCell(`B${sr}`).value = claimTotal; ws3.getCell(`B${sr}`).numFmt = cFmt;
+    ws3.getCell(`C${sr}`).value = 'SGD'; ws3.getCell(`D${sr}`).value = claimSgd; ws3.getCell(`D${sr}`).numFmt = sFmt;
+    sr += 2;
+    const cHdrRow = ws3.addRow(['Date', 'Description', 'Amount', 'SGD', 'Card']);
+    sr++;
+    cHdrRow.eachCell(cell => {
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = hdrFill;
+      cell.border = thinBorder;
+    });
+    claimExps.sort((a,b) => b.date.localeCompare(a.date)).forEach((e, i) => {
+      const row = ws3.addRow([e.date, e.description, isSgdOnlyEntry(e)?0:e.amount, e.sgdAmount||0, e.cardName||'']);
+      row.eachCell(cell => { cell.font = regFont; cell.border = thinBorder; });
+      row.getCell(3).numFmt = cFmt;
+      row.getCell(4).numFmt = sFmt;
+      if (i % 2 === 0) row.eachCell(cell => { cell.fill = altFill; });
+    });
+  }
+
+  // Generate and share/download
+  const buf = await wb.xlsx.writeBuffer();
+  const filename = (t.name || 'TripExpense').replace(/[^a-zA-Z0-9 ]/g, '') + '.xlsx';
+  const file = new File([buf], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+  // Try native share sheet first (iOS Safari)
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    } catch(e) {
+      if (e.name === 'AbortError') return; // User cancelled
+    }
+  }
+  // Fallback: direct download
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ─── Dashboard ─────────────────────────────────────────
+function renderDashboard() {
+  const exps = state.expenses.filter(e => !state.deletedIds[e.id]);
+  const c = state.trip.currency;
+  const claimable = exps.filter(e => e.claimable);
+  const nonClaimable = exps.filter(e => !e.claimable);
+
+  const totalF = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+  const totalSgd = exps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const claimF = claimable.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+  const claimSgd = claimable.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const nonClaimF = nonClaimable.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+  const nonClaimSgd = nonClaimable.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+  const pendingSgdCount = exps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
+
+  // By card: track both USD and SGD
+  const byCard = {}, byCardSgd = {}, byCat = {}, byCatSgd = {};
+  exps.forEach(e => {
+    const n = e.cardName||"Unknown";
+    const amt = isSgdOnlyEntry(e) ? 0 : e.amount;
+    const sgd = e.sgdAmount || 0;
+    byCard[n] = (byCard[n]||0) + amt;
+    byCardSgd[n] = (byCardSgd[n]||0) + sgd;
+    byCat[e.category] = (byCat[e.category]||0) + amt;
+    byCatSgd[e.category] = (byCatSgd[e.category]||0) + sgd;
+  });
+
+  let h = '';
+  // Export lives on the Summary view only (12 Jul UX) — for all trips
+  if (state.expenses.length > 0) {
+    h += '<div style="padding:12px 16px;display:flex;gap:8px;border-bottom:1px solid var(--border);">';
+    h += '<button class="export-btn" id="export-excel-top-dash" style="flex:1;">Export Excel</button>';
+    h += '</div>';
+  }
+  h += '<div class="dashboard">';
+  const isGroup = isGroupTrip(state.trip);
+
+  // Totals - prominent, two-column layout
+  h += '<div class="total-banner">';
+  const sgdCell = pendingSgdCount > 0
+    ? '<span class="banner-val pending-cell">pending</span>'
+    : null;
+  // Column header
+  h += `<div class="banner-header"><span></span><span class="banner-col-label">${c}</span><span class="banner-col-label">SGD</span></div>`;
+  if (isGroup) {
+    const myShareF = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+    const mySgdShare = exps.reduce((s,e) => s + getMySgdShare(e, state.trip), 0);
+    const othersF = totalF - myShareF;
+    const othersSgd = totalSgd - mySgdShare;
+    h += `<div class="banner-row"><span class="banner-row-label">You Spent</span><span class="banner-val">${money(myShareF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val">${money(mySgdShare, "SGD")}</span>`}</div>`;
+    h += `<div class="banner-row"><span class="banner-row-label dim">Others' Share</span><span class="banner-val dim">${money(othersF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val dim">${money(othersSgd, "SGD")}</span>`}</div>`;
+    h += `<div class="banner-row"><span class="banner-row-label dim">Total Bill</span><span class="banner-val dim">${money(totalF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val dim">${money(totalSgd, "SGD")}</span>`}</div>`;
+  } else {
+    h += `<div class="banner-row"><span class="banner-row-label">You Spent</span><span class="banner-val">${money(totalF, c)}</span>${pendingSgdCount > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val">${money(totalSgd, "SGD")}</span>`}</div>`;
+  }
+  if (pendingSgdCount > 0) h += `<div class="total-pending">${pendingSgdCount} entries pending SGD</div>`;
+  h += `<div class="total-entries">${exps.length} entries</div>`;
+  h += '</div>';
+
+  // Claimable breakdown
+  if (state.trip.type === "work") {
+    h += '<div class="breakdown"><div class="breakdown-title">Claimable vs Personal</div>';
+    h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Claimable</span><span class="breakdown-val">${money(claimF, c)}</span><span class="breakdown-val">${money(claimSgd, "SGD")}</span></div>`;
+    h += `<div class="breakdown-row-dual"><span class="breakdown-label">Personal</span><span class="breakdown-val">${money(nonClaimF, c)}</span><span class="breakdown-val">${money(nonClaimSgd, "SGD")}</span></div>`;
+    h += '</div>';
+  }
+
+  if (Object.keys(byCard).length) {
+    h += '<div class="breakdown"><div class="breakdown-title">By Card</div>';
+    h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
+    Object.entries(byCard).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">${money(a, c)}</span><span class="breakdown-val">${money(byCardSgd[n]||0, "SGD")}</span></div>`;
+    });
+    h += '</div>';
+  }
+  if (Object.keys(byCat).length) {
+    h += '<div class="breakdown"><div class="breakdown-title">By Category</div>';
+    h += '<div class="breakdown-header"><span></span><span class="bh-right">' + c + '</span><span class="bh-right">SGD</span></div>';
+    Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([n,a]) => {
+      h += `<div class="breakdown-row-dual"><span class="breakdown-label">${esc(n)}</span><span class="breakdown-val">${money(a, c)}</span><span class="breakdown-val">${money(byCatSgd[n]||0, "SGD")}</span></div>`;
+    });
+    h += '</div>';
+  }
+
+  // Daily breakdown by card
+  const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+  if (dates.length) {
+    h += '<div class="breakdown"><div class="breakdown-title">By Day</div>';
+    if (isGroup) {
+      h += '<div class="breakdown-header"><span></span><span class="bh-right">My Share</span><span class="bh-right">Paid</span></div>';
+    }
+    dates.forEach(date => {
+      const dayExps = exps.filter(e => e.date === date);
+      const dayF = dayExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+      const daySgd = dayExps.reduce((s,e) => s + (e.sgdAmount || 0), 0);
+      if (isGroup) {
+        const dayMyShare = dayExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">${money(dayMyShare, c)}</span><span class="breakdown-val" style="color:var(--text-muted);">${money(dayF, c)}</span></div>`;
+      } else {
+        h += `<div class="breakdown-row-dual" style="background:var(--card);margin:8px -14px 0;padding:7px 14px;border-radius:4px;"><span class="breakdown-label" style="font-weight:600;color:var(--text);">${formatDate(date)}</span><span class="breakdown-val" style="color:var(--accent);">${money(dayF, c)}</span><span class="breakdown-val" style="color:var(--accent);">${money(daySgd, "SGD")}</span></div>`;
+      }
+      // Card subtotals for this day
+      const dayByCard = {}, dayByCardSgd = {};
+      dayExps.forEach(e => {
+        const n = e.cardName || "Unknown";
+        dayByCard[n] = (dayByCard[n]||0) + (isSgdOnlyEntry(e) ? 0 : e.amount);
+        dayByCardSgd[n] = (dayByCardSgd[n]||0) + (e.sgdAmount || 0);
+      });
+      Object.entries(dayByCard).sort((a,b) => b[1]-a[1]).forEach(([n,a]) => {
+        h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="padding-left:12px;font-size:11px;">${esc(n)}</span><span class="breakdown-val" style="font-size:11px;">${money(a, c)}</span><span class="breakdown-val" style="font-size:11px;">${money(dayByCardSgd[n]||0, "SGD")}</span></div>`;
+      });
+    });
+    h += '</div>';
+  }
+
+  // Settlement section (group trips only)
+  if (isGroup) {
+    const sharedExps = exps.filter(e => e.shared);
+    const totalSharedPaid = sharedExps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const totalMyShareShared = sharedExps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+    const othersOwe = totalSharedPaid - totalMyShareShared;
+    const othersOweSgd = sharedExps.reduce((s,e) => {
+      const fullSgd = e.sgdAmount || 0;
+      const mySgd = getMySgdShare(e, state.trip);
+      return s + (fullSgd - mySgd);
+    }, 0);
+
+    h += '<div class="breakdown"><div class="breakdown-title">Settlement</div>';
+    if (sharedExps.length === 0) {
+      h += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No shared expenses yet.</div>';
+    } else {
+      const sharedPendingSgd = sharedExps.filter(e => !e.sgdAmount && !isSgdOnlyEntry(e)).length;
+      h += `<div class="total-banner" style="margin-bottom:12px;">`;
+      h += `<div class="banner-header"><span></span><span class="banner-col-label">${c}</span><span class="banner-col-label">SGD</span></div>`;
+      h += `<div class="banner-row"><span class="banner-row-label" style="color:#4ecdc4;">Others Owe You</span><span class="banner-val" style="color:#4ecdc4;">${money(othersOwe, c)}</span>${sharedPendingSgd > 0 ? '<span class="banner-val pending-cell">pending</span>' : `<span class="banner-val" style="color:#4ecdc4;">${money(othersOweSgd, "SGD")}</span>`}</div>`;
+      if (sharedPendingSgd > 0) h += `<div class="total-pending">${sharedPendingSgd} shared entries pending SGD</div>`;
+      h += `</div>`;
+      // Line items
+      const sharedDates = [...new Set(sharedExps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+      sharedDates.forEach(date => {
+        const dayShared = sharedExps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+        h += `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-top:8px;">${formatDate(date)}</div>`;
+        dayShared.forEach(e => {
+          const gs = Number(e.splitCount) || getGroupSize(state.trip);
+          const myShare = getMyShare(e, state.trip);
+          const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
+          const eachShare = Math.round(dispAmt / gs * 100) / 100;
+          const isCustom = e.myShare != null;
+          // 12 Jul: currency codes, not "$" — "$12000" on a JPY trip was misleading
+          const dispCur = isSgdOnlyEntry(e) ? "SGD" : c;
+          h += `<div class="breakdown-row-dual"><span class="breakdown-label" style="font-size:11px;">${esc(e.description)}</span>`;
+          h += `<span class="breakdown-val" style="font-size:11px;">${esc(dispCur)} ${money(dispAmt, dispCur)}</span>`;
+          if (isCustom) {
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">My: ${esc(dispCur)} ${money(myShare, dispCur)}</span>`;
+          } else {
+            h += `<span class="breakdown-val" style="font-size:10px;color:var(--text-muted);">÷${gs} = ${esc(dispCur)} ${money(eachShare, dispCur)}</span>`;
+          }
+          h += `</div>`;
+        });
+      });
+      h += `<button class="export-btn" id="copy-settlement" style="margin-top:12px;width:100%;">Copy Settlement</button>`;
+    }
+    h += '</div>';
+  }
+
+  h += '</div>';
+  document.getElementById("view-dashboard").innerHTML = h;
+
+  // Top export handler (all trips)
+  const exportTopDash = document.getElementById("export-excel-top-dash");
+  if (exportTopDash) exportTopDash.addEventListener("click", async () => {
+    exportTopDash.textContent = "Generating...";
+    try {
+      await generateExcel();
+      exportTopDash.textContent = "Export Excel";
+    } catch(e) {
+      // 12 Jul: failures were console-only — user saw the button flicker
+      console.error("Excel error:", e);
+      exportTopDash.textContent = "Export failed — tap to retry";
+      setTimeout(() => { exportTopDash.textContent = "Export Excel"; }, 4000);
+    }
+  });
+
+  // Settlement copy handler
+  document.getElementById("copy-settlement")?.addEventListener("click", () => {
+    const exps = state.expenses.filter(e => e.shared && !state.deletedIds[e.id]);
+    const c = state.trip.currency;
+    const gs = getGroupSize(state.trip);
+    let text = `${state.trip.name} — Shared Expenses\nGroup: ${gs} people\n\n`;
+    const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
+    dates.forEach(date => {
+      text += `${formatDate(date)}\n`;
+      exps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).forEach(e => {
+        const splitN = e.splitCount || gs;
+        const myShare = getMyShare(e, state.trip);
+        const isCustom = e.myShare != null;
+        const dispCur = isSgdOnlyEntry(e) ? "SGD" : c;
+        const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
+        if (isCustom) {
+          text += `  ${e.description}: ${dispCur} ${money(dispAmt, dispCur)} (My share: ${money(myShare, dispCur)}, Others: ${money(dispAmt - myShare, dispCur)})\n`;
+        } else {
+          text += `  ${e.description}: ${dispCur} ${money(dispAmt, dispCur)} ÷${splitN} = ${money(dispAmt/splitN, dispCur)} each\n`;
+        }
+      });
+      text += '\n';
+    });
+    const totalPaid = exps.reduce((s,e) => s + (isSgdOnlyEntry(e) ? 0 : e.amount), 0);
+    const totalMyShare = exps.reduce((s,e) => s + getMyShare(e, state.trip), 0);
+    const othersOwe = totalPaid - totalMyShare;
+    const othersOweSgd = exps.reduce((s,e) => (e.sgdAmount||0) - getMySgdShare(e, state.trip) + s, 0);
+    text += `Total shared: ${c} ${money(totalPaid, c)}\n`;
+    text += `Others owe: ${c} ${money(othersOwe, c)} (SGD ${money(othersOweSgd, "SGD")})\n`;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById("copy-settlement");
+      if (btn) { btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = "Copy Settlement"; }, 2000); }
+    });
+  });
+}
+
+// ─── Cards ─────────────────────────────────────────────
+function renderCards() {
+  let h = '<div class="card-manager"><h3 class="section-title">Payment Methods</h3>';
+  [...state.cards].sort((a,b) => a.name.localeCompare(b.name)).forEach(c => {
+    h += `<div class="card-row"><span class="name">${esc(c.name)}</span><span class="shortcut">${esc(c.shortcut)}</span><button class="remove" data-remove-card="${c.id}">×</button></div>`;
+  });
+  h += '<div class="add-card-row">';
+  h += '<input class="name-input" id="new-card-name" placeholder="Card name">';
+  h += '<input class="shortcut-input" id="new-card-shortcut" placeholder="Shortcut">';
+  h += '<button class="add-card-btn" id="add-card">Add</button>';
+  h += '</div>';
+  h += '</div>';
+
+  // Group size (personal group trips)
+  if (isGroupTrip(state.trip)) {
+    const gs = getGroupSize(state.trip);
+    h += '<div class="backup-section"><h3 class="section-title">Group Size</h3>';
+    h += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+    for (let i = 2; i <= 5; i++) {
+      h += `<button class="type-btn ${gs===i?'active':''}" data-change-gs="${i}">${i}</button>`;
+    }
+    h += '</div>';
+    h += `<div style="font-size:11px;color:var(--text-muted);">Current: ${gs} people. Changing this only affects new shared entries.</div>`;
+    h += '</div>';
+  }
+
+  // Cash currency converter (only if trip currency isn't SGD and there are cash entries)
+  if (state.trip && state.trip.currency !== "SGD") {
+    const cur = state.trip.currency;
+    const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
+    if (cashEntries.length > 0) {
+    h += `<div class="backup-section"><h3 class="section-title">SGD → ${esc(cur)} (Cash)</h3>`;
+    h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${esc(cur)} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
+    h += '<div style="display:flex;flex-direction:column;gap:12px;">';
+    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">${esc(cur)} received</label><input class="edit-input" id="cash-foreign" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 500000" style="flex:1;min-width:0;"></div>`;
+    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 540" style="flex:1;min-width:0;"></div>`;
+    h += '</div>';
+    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${Number(cashEntries.length)} Cash Entries</button>`;
+    h += '<div id="cash-rate-msg" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>';
+    h += '</div>';
+    }
+  }
+
+  // Sync settings (only relevant when signed in)
+  if (currentUser) {
+    h += '<div class="backup-section"><h3 class="section-title">Sync Settings</h3>';
+    h += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+    h += `<button class="type-btn ${state.syncMode==='auto'?'active':''}" id="sync-auto">Auto Sync</button>`;
+    h += `<button class="type-btn ${state.syncMode==='manual'?'active':''}" id="sync-manual">Manual Sync</button>`;
+    h += '</div>';
+    h += `<div style="font-size:11px;color:var(--text-muted);">${state.syncMode==='auto'?'Syncs automatically after every edit when signed in.':'Only syncs when you tap the ⟳ button at the top of the screen. Good for limited data plans.'}</div>`;
+    h += '</div>';
+  }
+
+  // Backup
+  h += '<div class="backup-section"><h3 class="section-title">Backup & Restore</h3>';
+  h += '<div class="backup-buttons">';
+  h += '<button class="backup-btn" id="copy-backup">Copy Backup</button>';
+  h += '<button class="backup-btn" id="toggle-restore">Restore</button>';
+  h += '</div>';
+  h += '<div id="backup-status"></div>';
+  h += '<div style="font-size:11px;color:var(--text-muted);line-height:1.6;margin-top:10px;"><strong style="color:var(--text);">How long data stays on this device:</strong> iPhone Safari tab — about 7 days unused · iPhone Home Screen app — until removed · Android — until browser data is cleared · Signed in — also kept in the cloud.</div>';
+  if (state.showRestore) {
+    h += '<textarea class="backup-textarea" id="restore-text" placeholder="Paste backup data here..."></textarea>';
+    h += '<button class="restore-btn" id="do-restore">Restore Data</button>';
+  }
+  h += '</div>';
+
+  // Data Snapshots (17 Jul): user-facing recovery — no console needed.
+  // Automatic snapshots are taken before risky writes and every 30 min.
+  if (currentUser) {
+    h += '<div class="backup-section"><h3 class="section-title">Data Snapshots</h3>';
+    h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Automatic backups of your synced data. If trips ever look wrong or incomplete, restore a snapshot from before the problem.</div>';
+    h += '<button class="backup-btn" id="show-snapshots" style="width:100%;">Show Available Snapshots</button>';
+    h += '<div id="snapshot-list" style="margin-top:10px;"></div>';
+    h += '</div>';
+  }
+
+  // Help section
+  h += '<div class="backup-section"><h3 class="section-title">Help</h3>';
+  h += '<button class="backup-btn" id="replay-tutorial" style="width:100%;">Show Tutorial Again</button>';
+  h += '</div>';
+
+  document.getElementById("view-cards").innerHTML = h;
+
+  // Bind
+  document.querySelectorAll("[data-remove-card]").forEach(el => {
+    el.addEventListener("click", () => { const cid = el.dataset.removeCard; state.cards = state.cards.filter(c=>c.id!==cid); if (!state.deletedCardIds.includes(cid)) state.deletedCardIds.push(cid); persist(); render(); });
+  });
+  document.getElementById("replay-tutorial")?.addEventListener("click", () => {
+    if (typeof showOnboarding === "function") showOnboarding();
+  });
+
+  // ─── Data Snapshots: list + one-tap restore (17 Jul) ───
+  document.getElementById("show-snapshots")?.addEventListener("click", async () => {
+    const listEl = document.getElementById("snapshot-list");
+    if (!listEl) return;
+    listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Loading…</div>';
+    const entries = [];
+    // Local snapshots (survive offline, die with browser storage)
+    (loadLocal("cloud-snapshots", []) || []).forEach((s, i) => {
+      if (s && s.data) entries.push({ src: "local-" + i, label: "This device", takenAt: s.takenAt || 0, data: s.data });
+    });
+    // Cloud snapshots (5 rolling slots)
+    try {
+      const { db, doc, getDoc } = window.FB;
+      for (let slot = 0; slot < 5; slot++) {
+        try {
+          const s = await getDoc(doc(db, "users", currentUser.uid, "snapshots", "snap-" + slot));
+          if (s.exists()) {
+            const d = s.data();
+            entries.push({ src: "cloud-" + slot, label: "Cloud", takenAt: d.takenAt || 0, data: JSON.parse(d.data) });
+          }
+        } catch (e) { /* slot unreadable — skip */ }
+      }
+    } catch (e) { console.error("Cloud snapshot listing failed:", e); }
+    entries.sort((a, b) => b.takenAt - a.takenAt);
+    if (entries.length === 0) {
+      listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No snapshots yet. They are created automatically as you use the app while signed in.</div>';
+      return;
+    }
+    window._snapshotEntries = entries;
+    let lh = "";
+    entries.forEach((s, i) => {
+      const when = s.takenAt ? new Date(s.takenAt).toLocaleString() : "unknown time";
+      const trips = [];
+      if (s.data.trip) trips.push(`${esc(s.data.trip.name)} (open, ${(s.data.expenses || []).length})`);
+      (s.data.pastTrips || []).forEach(p => trips.push(`${esc(p.name)} (${(p.expenses || []).length})`));
+      lh += `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">`;
+      lh += `<div style="font-size:12px;font-weight:600;">${s.label} — ${when}</div>`;
+      lh += `<div style="font-size:11px;color:var(--text-muted);margin:4px 0 8px;">${trips.join(" · ") || "empty"}</div>`;
+      lh += `<button class="backup-btn" data-restore-snapshot="${i}" style="width:100%;">Restore This Snapshot</button>`;
+      lh += `</div>`;
+    });
+    listEl.innerHTML = lh;
+    listEl.querySelectorAll("[data-restore-snapshot]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const s = window._snapshotEntries[parseInt(btn.dataset.restoreSnapshot)];
+        if (!s) return;
+        const when = s.takenAt ? new Date(s.takenAt).toLocaleString() : "unknown time";
+        if (!confirm(`Restore your data to the snapshot from ${when}?\n\nYour current data will itself be snapshotted first, so this is reversible.`)) return;
+        try {
+          // Snapshot the CURRENT cloud state first — restore must be reversible
+          const { db, doc, getDoc } = window.FB;
+          const cur = await getDoc(doc(db, "users", currentUser.uid));
+          if (cur.exists()) await snapshotCloud(cur.data(), "pre-restore");
+          // Apply snapshot to state, run all integrity passes, persist + push
+          state.trip = s.data.trip || null;
+          state.expenses = s.data.expenses || [];
+          state.cards = (s.data.cards && s.data.cards.length) ? s.data.cards : state.cards;
+          state.deletedCardIds = s.data.deletedCardIds || state.deletedCardIds || [];
+          state.pastTrips = s.data.pastTrips || [];
+          resolveActivePastConflict();
+          cleanMisplacedExpenses();
+          dedupeTrips();
+          persist();
+          const ok = await saveToFirebase();
+          render();
+          showSyncWarning(ok === false ? "Restored locally — cloud push was blocked; tap ⟳ to retry." : "Snapshot restored. All your devices will pick it up on next sync (sign out/in on phones if needed).");
+        } catch (e) {
+          console.error("Snapshot restore failed:", e);
+          showSyncWarning("Restore failed: " + (e.message || "unknown error"));
+        }
+      });
+    });
+  });
+  document.getElementById("add-card")?.addEventListener("click", () => {
+    const n = document.getElementById("new-card-name").value.trim();
+    const s = document.getElementById("new-card-shortcut").value.trim().toLowerCase();
+    if (n && s) { state.cards.push({ id:genId(), name:n, shortcut:s }); persist(); render(); }
+  });
+
+  // Cash → SGD rate converter
+  document.getElementById("apply-cash-rate")?.addEventListener("click", () => {
+    const foreign = parseFloat(document.getElementById("cash-foreign")?.value);
+    const sgd = parseFloat(document.getElementById("cash-sgd")?.value);
+    const msg = document.getElementById("cash-rate-msg");
+    if (!foreign || !sgd || foreign <= 0 || sgd <= 0) {
+      if (msg) { msg.textContent = "Enter valid amounts for both fields."; msg.style.color = "#cc4444"; }
+      return;
+    }
+    const rate = sgd / foreign; // SGD per unit foreign
+    const cur = state.trip.currency;
+    const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
+    if (cashEntries.length === 0) {
+      if (msg) { msg.textContent = "No cash entries to convert."; msg.style.color = "#cc4444"; }
+      return;
+    }
+    const rateLabel = (foreign / sgd).toFixed(2);
+    if (!confirm(`Apply rate 1 SGD = ${rateLabel} ${cur} to ${cashEntries.length} cash entries?\n\nThis overwrites any existing SGD on those entries.`)) return;
+    cashEntries.forEach(e => {
+      const idx = state.expenses.findIndex(x => x.id === e.id);
+      if (idx >= 0) {
+        state.expenses[idx].sgdAmount = Math.round(e.amount * rate * 100) / 100;
+        state.expenses[idx].updatedAt = Date.now();
+      }
+    });
+    persist(); render();
+  });
+  document.getElementById("copy-backup")?.addEventListener("click", () => {
+    const data = JSON.stringify({ trip:state.trip, expenses:state.expenses, cards:state.cards, deletedCardIds:state.deletedCardIds, pastTrips:state.pastTrips, version:1, exportedAt:Date.now() });
+    navigator.clipboard.writeText(data).then(() => {
+      const st = document.getElementById("backup-status"); if(st) { st.textContent="Copied to clipboard!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
+    }).catch(() => { state.showRestore=true; render(); const ta=document.getElementById("restore-text"); if(ta) ta.value=data; });
+  });
+  document.getElementById("toggle-restore")?.addEventListener("click", () => { state.showRestore=!state.showRestore; render(); });
+  document.getElementById("do-restore")?.addEventListener("click", () => {
+    const st = document.getElementById("backup-status");
+    try {
+      const data = JSON.parse(document.getElementById("restore-text").value);
+      // Schema validation
+      if (!data.version || typeof data.version !== "number") throw new Error("Missing or invalid version");
+      if (data.expenses && !Array.isArray(data.expenses)) throw new Error("Expenses must be an array");
+      if (data.cards && !Array.isArray(data.cards)) throw new Error("Cards must be an array");
+      if (data.pastTrips && !Array.isArray(data.pastTrips)) throw new Error("Past trips must be an array");
+      if (data.trip && typeof data.trip !== "object") throw new Error("Trip must be an object");
+      // Validate expense entries have required fields (12 Jul: type-check id +
+      // date — a numeric date passed truthiness but crashed the expenses view)
+      if (data.expenses) {
+        for (const e of data.expenses) {
+          if (!e.id || typeof e.id !== "string" || typeof e.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || typeof e.amount !== "number") throw new Error("Invalid expense entry: " + (e.id || "unknown"));
+        }
+      }
+      // Validate cards have required fields; empty array would wipe cards everywhere
+      if (data.cards) {
+        if (data.cards.length === 0) throw new Error("Backup contains no cards — refusing to wipe existing cards");
+        for (const c of data.cards) {
+          if (!c.id || !c.name || !c.shortcut) throw new Error("Invalid card entry: " + (c.id || "unknown"));
+        }
+      }
+      // Validate past trips + their expenses (12 Jul: were entirely unvalidated)
+      if (data.pastTrips) {
+        for (const pt of data.pastTrips) {
+          if (!pt.id || !pt.name || typeof pt.currency !== "string") throw new Error("Invalid past trip: " + (pt.name || pt.id || "unknown"));
+          if (pt.expenses && !Array.isArray(pt.expenses)) throw new Error("Past trip expenses must be an array: " + pt.name);
+          for (const e of (pt.expenses || [])) {
+            if (!e.id || typeof e.date !== "string" || typeof e.amount !== "number") throw new Error("Invalid expense in past trip: " + pt.name);
+          }
+        }
+      }
+      // Size check — reject if over 900KB (Firestore limit is 1MB)
+      if (JSON.stringify(data).length > 900000) throw new Error("Backup data too large");
+      // Apply
+      if (data.trip) state.trip = data.trip;
+      if (data.expenses) state.expenses = data.expenses;
+      if (data.cards) state.cards = data.cards;
+      if (Array.isArray(data.deletedCardIds)) state.deletedCardIds = data.deletedCardIds;
+      if (data.pastTrips) state.pastTrips = data.pastTrips;
+      // 17 Jul: a restored backup can itself carry a zombie (trip both active
+      // and in pastTrips) — resolve before persisting/syncing it anywhere.
+      resolveActivePastConflict();
+      cleanMisplacedExpenses();
+      dedupeTrips();
+      state.showRestore = false;
+      persist(); render();
+      if(st) { st.textContent="Restored!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
+    } catch(e) { if(st) { st.textContent=e.message || "Invalid backup data"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},4000); } }
+  });
+  // Sync mode toggles
+  document.getElementById("sync-auto")?.addEventListener("click", () => {
+    state.syncMode = "auto"; saveLocal("sync-mode", "auto"); render();
+  });
+  document.getElementById("sync-manual")?.addEventListener("click", () => {
+    state.syncMode = "manual"; saveLocal("sync-mode", "manual"); render();
+  });
+  // Group size change
+  document.querySelectorAll("[data-change-gs]").forEach(b => {
+    b.addEventListener("click", () => {
+      if (state.trip) {
+        state.trip.groupSize = parseInt(b.dataset.changeGs);
+        persist(); render();
+      }
+    });
+  });
+}
+
+// ─── History ───────────────────────────────────────────
+function renderHistory() {
+  let h = '<div style="padding:16px"><h3 class="section-title">Past Trips</h3>';
+  if (!state.pastTrips.length) {
+    h += '<div class="empty">No past trips yet — start one under New Trip.</div>';
+  } else {
+    state.pastTrips.forEach(pt => {
+      h += `<div class="past-trip"><div><div class="past-trip-name">${esc(pt.name)}</div><div class="past-trip-meta">${esc(pt.currency)} · ${pt.expenses?.length||0} expenses · ${esc(pt.type ? pt.type.charAt(0).toUpperCase()+pt.type.slice(1) : "")}</div></div><button class="load-btn" data-load="${pt.id}">Reopen</button></div>`;
+    });
+  }
+  h += '</div>';
+  document.getElementById("view-history").innerHTML = h;
+
+  document.querySelectorAll("[data-load]").forEach(el => {
+    el.addEventListener("click", () => {
+      const pt = state.pastTrips.find(p=>p.id===el.dataset.load);
+      if (pt) {
+        // 12 Jul fix: park whatever trip is currently open BEFORE loading this
+        // one. Previously the open trip was silently overwritten and lost.
+        parkActiveTrip();
+        // Carry the FULL trip object (dateFormat, endedAt, etc.) — 12 Jul fix:
+        // dropping fields corrupted date parsing and rewrote endedAt on re-park.
+        const { expenses: _reopenExps, ...tripMeta } = pt;
+        state.trip = { ...tripMeta, groupSize: pt.groupSize || 1 };
+        state.expenses = pt.expenses || [];
+        state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
+        state.isHistorical = true;
+        state.editingEnabled = false;
+        persist(); state.currentView="dashboard"; render();
+      }
+    });
+  });
+}
+
+// ─── Setup ─────────────────────────────────────────────
+function renderSetup() {
+  let h = '<div class="setup-card">';
+  h += '<h2 class="setup-title">New Trip</h2>';
+  h += '<label class="setup-label">Trip Name</label>';
+  h += '<input class="setup-input" id="setup-name" placeholder="e.g. Japan Holiday Dec 2026">';
+  h += '<label class="setup-label">Foreign Currency</label>';
+  h += '<select class="setup-input" id="setup-currency">';
+  h += '<option value="">Select currency</option>';
+  const currencies = [
+    "AED","AUD","BND","CAD","CHF","CNY","CZK","DKK","EUR","GBP",
+    "HKD","HUF","IDR","INR","ISK","JPY","KHR","KRW","LAK","LKR",
+    "MAD","MMK","MXN","MYR","NOK","NZD","PHP","PLN","QAR","RON",
+    "SAR","SEK","SGD","THB","TRY","TWD","USD","VND","ZAR"
+  ];
+  currencies.forEach(cur => { h += `<option value="${cur}">${cur}</option>`; });
+  h += '</select>';
+  h += '<label class="setup-label">Trip Type</label>';
+  h += '<div class="type-toggle"><button class="type-btn active" id="type-personal" data-type="personal">Personal</button><button class="type-btn" id="type-work" data-type="work">Work</button></div>';
+  h += '<div id="group-size-section"><label class="setup-label">Group Size</label>';
+  h += '<div class="type-toggle"><button class="type-btn active" data-gs="1">Solo</button><button class="type-btn" data-gs="2">2</button><button class="type-btn" data-gs="3">3</button><button class="type-btn" data-gs="4">4</button><button class="type-btn" data-gs="5">5</button></div></div>';
+  h += '<label class="setup-label">Date Format</label>';
+  h += '<div class="type-toggle"><button class="type-btn active" id="fmt-ddmm" data-fmt="dd/mm">DD/MM</button><button class="type-btn" id="fmt-mmdd" data-fmt="mm/dd">MM/DD</button></div>';
+  h += '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.4;">Used when you type a date in an entry, e.g. "12/7 taxi".</div>';
+  h += '<button class="setup-save" id="setup-save">Start Trip</button>';
+  h += '<div id="setup-error" style="font-size:12px;color:var(--danger);margin-top:8px;display:none;"></div>';
+  h += '</div>';
+  document.getElementById("view-setup").innerHTML = h;
+
+  let tripType = "personal";
+  let dateFormat = "dd/mm";
+  let groupSize = 1;
+  document.querySelectorAll(".type-btn[data-type]").forEach(b => {
+    b.addEventListener("click", () => {
+      tripType = b.dataset.type;
+      document.querySelectorAll(".type-btn[data-type]").forEach(x => x.classList.toggle("active", x===b));
+      // Show/hide group size for personal trips
+      const gsSection = document.getElementById("group-size-section");
+      if (gsSection) gsSection.style.display = tripType === "personal" ? "" : "none";
+    });
+  });
+  document.querySelectorAll(".type-btn[data-gs]").forEach(b => {
+    b.addEventListener("click", () => {
+      groupSize = parseInt(b.dataset.gs);
+      document.querySelectorAll(".type-btn[data-gs]").forEach(x => x.classList.toggle("active", x===b));
+    });
+  });
+  document.querySelectorAll(".type-btn[data-fmt]").forEach(b => {
+    b.addEventListener("click", () => {
+      dateFormat = b.dataset.fmt;
+      document.querySelectorAll(".type-btn[data-fmt]").forEach(x => x.classList.toggle("active", x===b));
+    });
+  });
+  document.getElementById("setup-save")?.addEventListener("click", () => {
+    const name = document.getElementById("setup-name").value.trim();
+    const cur = document.getElementById("setup-currency").value;
+    if (!name || !cur) {
+      const err = document.getElementById("setup-error");
+      if (err) { err.textContent = !name ? "Enter a trip name first." : "Choose a currency first."; err.style.display = ""; }
+      return;
+    }
+    const gs = tripType === "personal" ? groupSize : 1;
+    parkActiveTrip(); // 12 Jul fix: never clobber a trip pulled in by background sync
+    state.trip = { id:genId(), name, currency:cur, type:tripType, dateFormat:dateFormat, groupSize:gs, createdAt:Date.now() };
+    state.expenses = [];
+    state.isHistorical = false;
+    state.editingEnabled = false;
+    persist(); state.currentView = "expenses"; render();
+  });
+}
+
+// ─── Drag and Drop ─────────────────────────────────────
+function initDragAndDrop() {
+  let dragId = null;
+  let dragEl = null;
+  let dragClone = null;
+  let longPressTimer = null;
+  let dragStarted = false;
+  let scrollInterval = null;
+
+  function startDrag(id, item, clientY) {
+    dragStarted = true;
+    state.isDragging = true;
+    const sourceContainer = item.closest(".swipe-container");
+    if (sourceContainer) sourceContainer.classList.add("drag-source");
+    const rect = item.getBoundingClientRect();
+    dragClone = item.cloneNode(true);
+    dragClone.style.cssText = "position:fixed;left:" + rect.left + "px;width:" + rect.width + "px;z-index:1000;opacity:0.9;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
+    dragClone.style.top = (clientY - 30) + "px";
+    document.body.appendChild(dragClone);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+
+  function moveDrag(clientX, clientY) {
+    if (!dragStarted || !dragClone) return;
+    dragClone.style.top = (clientY - 30) + "px";
+    // Clear previous indicators
+    document.querySelectorAll(".drag-target-above,.drag-target-below,.drag-over").forEach(el => {
+      el.classList.remove("drag-target-above","drag-target-below","drag-over");
+    });
+    // Find element below
+    dragClone.style.display = "none";
+    const elBelow = document.elementFromPoint(clientX, clientY);
+    dragClone.style.display = "";
+    if (!elBelow) return;
+    const targetItem = elBelow.closest(".expense-item[data-id]");
+    const targetDay = elBelow.closest(".day-header[data-dayheader]");
+    if (targetItem && targetItem.dataset.id !== dragId) {
+      const rect = targetItem.getBoundingClientRect();
+      const isBottomHalf = clientY > rect.top + rect.height / 2;
+      targetItem.classList.add(isBottomHalf ? "drag-target-below" : "drag-target-above");
+    } else if (targetDay) {
+      targetDay.classList.add("drag-over");
+    }
+    // Auto-scroll
+    const edgeZone = 60;
+    const vh = window.innerHeight;
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    if (clientY < edgeZone) {
+      scrollInterval = setInterval(() => { window.scrollBy(0, -8); }, 16);
+    } else if (clientY > vh - edgeZone) {
+      scrollInterval = setInterval(() => { window.scrollBy(0, 8); }, 16);
+    }
+  }
+
+  function endDrag() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    if (!dragStarted) { dragId = null; dragEl = null; return; }
+    const targetAbove = document.querySelector(".expense-item.drag-target-above");
+    const targetBelow = document.querySelector(".expense-item.drag-target-below");
+    const overDay = document.querySelector(".day-header.drag-over");
+    if ((targetAbove || targetBelow) && dragId) {
+      const target = targetAbove || targetBelow;
+      const insertAfter = !!targetBelow;
+      reorderExpense(dragId, target.dataset.id, target.dataset.date, insertAfter);
+    } else if (overDay && dragId) {
+      moveExpenseToDate(dragId, overDay.dataset.dayheader);
+    }
+    cleanup();
+  }
+
+  function cleanup() {
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    document.querySelectorAll(".drag-over,.drag-source,.drag-target-above,.drag-target-below").forEach(el => {
+      el.classList.remove("drag-over","drag-source","drag-target-above","drag-target-below");
+    });
+    if (dragClone) { dragClone.remove(); dragClone = null; }
+    dragId = null; dragEl = null; dragStarted = false;
+    setTimeout(() => { state.isDragging = false; }, 100);
+  }
+
+  document.querySelectorAll("[data-drag]").forEach(handle => {
+    // Touch events (mobile)
+    handle.addEventListener("touchstart", (ev) => {
+      const id = handle.dataset.drag;
+      const item = handle.closest(".expense-item");
+      if (!item) return;
+      dragId = id; dragEl = item; dragStarted = false;
+      longPressTimer = setTimeout(() => startDrag(id, item, ev.touches[0].clientY), 400);
+    }, { passive: true });
+
+    // Mouse events (desktop)
+    handle.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      const id = handle.dataset.drag;
+      const item = handle.closest(".expense-item");
+      if (!item) return;
+      dragId = id; dragEl = item; dragStarted = false;
+      longPressTimer = setTimeout(() => startDrag(id, item, ev.clientY), 400);
+    });
+  });
+
+  // Touch move/end
+  document.addEventListener("touchmove", (ev) => {
+    if (!dragStarted) return;
+    ev.preventDefault();
+    moveDrag(ev.touches[0].clientX, ev.touches[0].clientY);
+  }, { passive: false });
+  document.addEventListener("touchend", endDrag);
+  document.addEventListener("touchcancel", () => { if (longPressTimer) clearTimeout(longPressTimer); cleanup(); });
+
+  // Mouse move/up
+  document.addEventListener("mousemove", (ev) => {
+    if (!dragStarted) return;
+    ev.preventDefault();
+    moveDrag(ev.clientX, ev.clientY);
+  });
+  document.addEventListener("mouseup", endDrag);
+}
+
+function reorderExpense(draggedId, targetId, targetDate, insertAfter) {
+  const dateExps = state.expenses.filter(e => e.date === targetDate).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+  const draggedExp = state.expenses.find(e => e.id === draggedId);
+  if (!draggedExp) return;
+
+  // Remove dragged from its current position
+  const filtered = dateExps.filter(e => e.id !== draggedId);
+  // Find target index
+  const targetIdx = filtered.findIndex(e => e.id === targetId);
+  // Insert before or after target
+  if (insertAfter) {
+    filtered.splice(targetIdx + 1, 0, draggedExp);
+  } else {
+    filtered.splice(targetIdx, 0, draggedExp);
+  }
+
+  // Update date and sortOrder
+  draggedExp.date = targetDate;
+  draggedExp.updatedAt = Date.now(); // 12 Jul fix: without this, next sync reverts the move
+  filtered.forEach((e, i) => { e.sortOrder = i; });
+  persist(); render();
+}
+
+function moveExpenseToDate(draggedId, targetDate) {
+  const draggedExp = state.expenses.find(e => e.id === draggedId);
+  if (!draggedExp) return;
+  const dateExps = state.expenses.filter(e => e.date === targetDate && e.id !== draggedId).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+  draggedExp.date = targetDate;
+  draggedExp.updatedAt = Date.now(); // 12 Jul fix: without this, next sync reverts the move
+  draggedExp.sortOrder = dateExps.length ? Math.max(...dateExps.map(e => e.sortOrder||0)) + 1 : 0;
+  persist(); render();
+}
+
+function initSwipeToDelete() {
+  const THRESHOLD = 80;
+  document.querySelectorAll("[data-swipe]").forEach(container => {
+    const id = container.dataset.swipe;
+    const item = container.querySelector(".expense-item");
+    if (!item) return;
+    let startX = 0, currentX = 0, swiping = false;
+
+    function onStart(clientX) {
+      startX = clientX; currentX = 0; swiping = true;
+      item.style.transition = "none";
+    }
+    function onMove(clientX) {
+      if (!swiping) return;
+      currentX = clientX - startX;
+      if (currentX > 0) currentX = 0; // Only allow left swipe
+      item.style.transform = "translateX(" + currentX + "px)";
+      state.isSwiping = Math.abs(currentX) > 10;
+    }
+    function onEnd() {
+      if (!swiping) return;
+      swiping = false;
+      item.style.transition = "transform 0.25s ease";
+      if (currentX < -THRESHOLD) {
+        // Swipe past threshold — delete
+        item.style.transform = "translateX(-100%)";
+        setTimeout(() => deleteExpense(id), 250);
+      } else {
+        // Snap back
+        item.style.transform = "translateX(0)";
+      }
+      setTimeout(() => { state.isSwiping = false; }, 100);
+    }
+
+    // Touch
+    item.addEventListener("touchstart", (ev) => {
+      if (ev.target.classList.contains("drag-handle")) return;
+      onStart(ev.touches[0].clientX);
+    }, { passive: true });
+    item.addEventListener("touchmove", (ev) => {
+      if (state.isDragging) return;
+      onMove(ev.touches[0].clientX);
+    }, { passive: true });
+    item.addEventListener("touchend", onEnd);
+
+    // Mouse
+    item.addEventListener("mousedown", (ev) => {
+      if (ev.target.classList.contains("drag-handle")) return;
+      onStart(ev.clientX);
+      const onMouseMove = (e) => { if (state.isDragging) return; onMove(e.clientX); };
+      const onMouseUp = () => { onEnd(); document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+  });
+}
+
+// ─── Init ──────────────────────────────────────────────
+// Sync button handler
+document.getElementById("sync-btn")?.addEventListener("click", () => manualSync());
+
+// Sign-in button
+document.getElementById("google-signin")?.addEventListener("click", async () => {
+  const statusEl = document.getElementById("auth-status");
+  try {
+    statusEl.textContent = "Signing in...";
+    const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch(e) {
+    console.error("Sign-in error:", e);
+    statusEl.textContent = "Sign-in failed: " + e.message;
+  }
+});
+
+document.getElementById("signout-btn")?.addEventListener("click", async () => {
+  // Cancel any pending auto-save FIRST
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  // 12 Jul fix: flush unsynced changes before wiping local data. Previously a
+  // sign-out within the debounce window (or in manual mode) destroyed them.
+  let flushed = false;
+  if (navigator.onLine && currentUser) {
+    try { flushed = (await saveToFirebase()) === true; } catch(e) { flushed = false; }
+  }
+  if (!flushed && !confirm("Couldn't sync your latest changes to the cloud. Sign out anyway? Unsynced changes on this device will be lost.")) return;
+  const { auth, signOut } = window.FB;
+  await signOut(auth);
+  // Clear sensitive data from localStorage
+  localStorage.removeItem("tengtrip-trip");
+  localStorage.removeItem("tengtrip-expenses");
+  localStorage.removeItem("tengtrip-cards");
+  localStorage.removeItem("tengtrip-deleted-card-ids");
+  localStorage.removeItem("tengtrip-past-trips");
+  localStorage.removeItem("tengtrip-last-sync-at");
+  localStorage.removeItem("tengtrip-cloud-snapshots");
+  localStorage.removeItem("tengtrip-last-cloud-snapshot-at");
+  // Reset state
+  currentUser = null;
+  state.trip = null;
+  state.expenses = [];
+  state.cards = DEFAULT_CARDS;
+  state.deletedCardIds = [];
+  state.pastTrips = [];
+  state.lastSyncAt = null;
+  state.isOffline = false;
+  // Show sign-in screen
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("auth-screen").classList.remove("hidden");
+  const authStatus = document.getElementById("auth-status");
+  if (authStatus) authStatus.textContent = "";
+});
+
+document.getElementById("offline-btn")?.addEventListener("click", () => {
+  document.getElementById("auth-screen").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  state.isOffline = true;
+  updateUserBar();
+  loadState();
+  if (!state.trip) {
+    // Brand-new user (no trips at all) → go straight to New Trip; returning user → History
+    state.currentView = state.pastTrips.length === 0 ? "setup" : "history";
+  }
+  render();
+});
+
+function updateUserBar() {
+  const bar = document.getElementById("user-info-bar");
+  const email = document.getElementById("user-email");
+  const syncBtn = document.getElementById("sync-btn");
+  const signout = document.getElementById("signout-btn");
+  const lastSync = document.getElementById("last-sync");
+  if (currentUser) {
+    bar.classList.add("online");
+    bar.classList.remove("offline");
+    email.textContent = currentUser.email;
+    syncBtn.style.display = "";
+    signout.style.display = "";
+    if (state.lastSyncAt) {
+      const ago = Math.round((Date.now() - state.lastSyncAt) / 60000);
+      lastSync.textContent = ago < 1 ? "Just synced" : ago < 60 ? ago + "m ago" : Math.round(ago/60) + "h ago";
+    } else {
+      lastSync.textContent = "Not synced";
+    }
+    const signinLink = document.getElementById("offline-signin");
+    if (signinLink) signinLink.style.display = "none";
+  } else {
+    bar.classList.remove("online");
+    bar.classList.add("offline");
+    email.textContent = "Offline";
+    syncBtn.style.display = "none";
+    signout.style.display = "none";
+    lastSync.textContent = "";
+    // Show sign-in link in offline mode
+    let signinLink = document.getElementById("offline-signin");
+    if (!signinLink) {
+      signinLink = document.createElement("button");
+      signinLink.id = "offline-signin";
+      signinLink.textContent = "Sign in";
+      signinLink.className = "signout-btn";
+      signinLink.addEventListener("click", async () => {
+        if (!window.FB) return;
+        const { auth, signInWithPopup, GoogleAuthProvider } = window.FB;
+        try {
+          signinLink.textContent = "Signing in...";
+          await signInWithPopup(auth, new GoogleAuthProvider());
+        } catch(e) {
+          console.error("Sign-in error:", e);
+          signinLink.textContent = "Failed — tap to retry";
+          setTimeout(() => { signinLink.textContent = "Sign in"; }, 3000);
+        }
+      });
+      bar.appendChild(signinLink);
+    }
+    signinLink.style.display = "";
+  }
+}
+
+function formatSyncTime() {
+  if (!state.lastSyncAt) return "Not synced";
+  const ago = Math.round((Date.now() - state.lastSyncAt) / 60000);
+  return ago < 1 ? "Just synced" : ago < 60 ? ago + "m ago" : Math.round(ago/60) + "h ago";
+}
+
+// Step 1: Load from localStorage immediately and render
+loadState();
+if (!state.trip) { state.currentView = "history"; }
+
+// Ask the browser to protect this origin's storage from eviction
+// (iOS 7-day WebKit purge — limited efficacy, but costs nothing).
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist()
+    .then(granted => console.log("storage.persist granted:", granted))
+    .catch(() => {});
+}
+
+// Step 2: Check if we should show sign-in or app
+function initAuth() {
+  if (!window.FB) { setTimeout(initAuth, 100); return; }
+  const { auth, onAuthStateChanged } = window.FB;
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      currentUser = user;
+      state.isOffline = false;
+      document.getElementById("auth-screen").classList.add("hidden");
+      document.getElementById("app").classList.remove("hidden");
+      updateUserBar();
+
+      // Silent auto-sync
+      if (state.syncMode === "auto") {
+        try {
+          const prevCount = state.expenses.length;
+          const scrollY = window.scrollY;
+          await manualSync();
+          if (state.expenses.length === prevCount) window.scrollTo(0, scrollY);
+        } catch(e) {
+          console.error("Auto-sync on load failed:", e);
+        }
+      }
+    } else {
+      currentUser = null;
+      if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
+        document.getElementById("auth-screen").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+        state.isOffline = true;
+        updateUserBar();
+      } else {
+        document.getElementById("auth-screen").classList.remove("hidden");
+        document.getElementById("app").classList.add("hidden");
+        const as = document.getElementById("auth-status");
+        if (as) as.textContent = "";
+      }
+    }
+  });
+}
+
+// If we have local data, show app immediately. Otherwise wait for Firebase.
+if (state.expenses.length > 0 || state.trip || state.pastTrips.length > 0) {
+  document.getElementById("auth-screen").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  state.isOffline = true;
+  updateUserBar();
+  render();
+} else {
+  // No local data — show the welcome/auth screen (local-first).
+  // initAuth will override this only if a signed-in session is restored.
+  document.getElementById("auth-screen").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
+  render();
+}
+
+initAuth();
+
+// ─── Onboarding ───
+const ONBOARDING_STEPS = [
+  { icon: "✏️", title: "Type what you spent", text: "Just type naturally in one line:", example: "15 lunch cash", hint: "Amount, what it was, and which card (shortcuts in Settings). That's it." },
+  { icon: "🌏", title: "Travelling overseas?", text: "Type two numbers — foreign first, then SGD:", example: "12000 dinner   18", hint: "Or just the foreign amount and fill SGD later. Home-currency expenses: add 'sgd'." },
+  { icon: "📊", title: "See your spending", text: "Tap Summary for totals by day, card, and category — in both currencies.", example: "", hint: "Travelling with others? Split bills and track who owes you. Travelling for work? Track what's claimable." },
+  { icon: "📤", title: "Export anytime", text: "Tap Export Excel at the top of the Summary tab for a formatted file you can share or keep.", example: "", hint: "Your data stays on your device. Use Backup in Settings to move it between devices, or sign in (optional) to sync automatically." },
+];
+let obIndex = 0;
+
+function showOnboarding() {
+  obIndex = 0;
+  renderOnboardingStep();
+  document.getElementById("onboarding").classList.remove("hidden");
+}
+function renderOnboardingStep() {
+  const s = ONBOARDING_STEPS[obIndex];
+  let html = `<div class="ob-icon">${s.icon}</div><h2 class="ob-title">${s.title}</h2><p class="ob-text">${s.text}</p>`;
+  if (s.example) html += `<div class="ob-example">${s.example}</div>`;
+  html += `<p class="ob-hint">${s.hint}</p>`;
+  document.getElementById("ob-step").innerHTML = html;
+  // Dots
+  let dots = "";
+  ONBOARDING_STEPS.forEach((_, i) => { dots += `<span class="ob-dot ${i===obIndex?'active':''}"></span>`; });
+  document.getElementById("ob-dots").innerHTML = dots;
+  // Button label
+  document.getElementById("ob-next").textContent = obIndex === ONBOARDING_STEPS.length - 1 ? "Get Started" : "Next";
+}
+function dismissOnboarding() {
+  document.getElementById("onboarding").classList.add("hidden");
+  saveLocal("onboarded", true);
+}
+document.getElementById("ob-next")?.addEventListener("click", () => {
+  if (obIndex < ONBOARDING_STEPS.length - 1) { obIndex++; renderOnboardingStep(); }
+  else dismissOnboarding();
+});
+document.getElementById("ob-skip")?.addEventListener("click", dismissOnboarding);
+
+// 12 Jul: onboarding no longer fires at boot — it used to appear on top of the
+// auth screen, describing UI that didn't exist yet, then never show again.
+// It now triggers from render() the first time a live trip's entry view renders.
+</script>
+</body>
+</html>
