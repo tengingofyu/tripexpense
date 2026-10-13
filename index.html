@@ -79,9 +79,10 @@ input[type="number"] { -moz-appearance: textfield; }
 /* 13 Oct (07): floating + jumps back to the input once it has scrolled away.
    Kept inside the 480px app column on wide screens; lifted above any bottom banner (JS sets bottom). */
 .add-fab { position: fixed; right: max(16px, calc((100vw - 480px) / 2 + 16px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
-  width: 56px; height: 56px; border-radius: 50%; border: none; background: var(--accent); color: #fff; font-size: 30px; line-height: 1;
+  width: 60px; height: 60px; padding: 0; border-radius: 50%; border: none; background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.45); z-index: 900; cursor: pointer;
   -webkit-tap-highlight-color: transparent; transition: opacity .15s ease, transform .15s ease; }
+.add-fab svg { width: 26px; height: 26px; display: block; } /* drawn shape, not a font glyph: exact centre on every device */
 .add-fab.fab-hidden { opacity: 0; transform: scale(0.6); pointer-events: none; }
 #view-expenses { padding-bottom: 72px; } /* last entry never sits under the button */
 .input-row { display: flex; gap: 8px; }
@@ -465,7 +466,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101307;
+const APP_BUILD = 2026101308;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -1502,7 +1503,7 @@ function bindExpenseEvents() {
   if (input) {
     input.addEventListener("input", () => updatePreview(input.value));
     input.addEventListener("keydown", (ev) => { if (ev.key==="Enter") { ev.preventDefault(); submitExpense(input.value); } });
-    input.addEventListener("focus", () => { setTimeout(() => { input.scrollIntoView({ behavior:"smooth", block:"nearest" }); }, 300); });
+    input.addEventListener("focus", () => { setTimeout(() => { if (document.activeElement === input) input.scrollIntoView({ behavior:"smooth", block:"nearest" }); }, 300); });
   }
   const cy = document.getElementById("claim-yes");
   const cn = document.getElementById("claim-no");
@@ -3088,6 +3089,27 @@ function formatSyncTime() {
 // Tap = INSTANT jump + focus in the same tap, because iOS only opens the
 // keyboard if focus() happens synchronously inside the user's tap.
 var addFab = null, fabRaf = 0; // var: render() may run before this line executes
+var fabScrollDown = false, fabTouchX = 0, fabTouchY = 0;
+// Direction comes from the user's own input (finger, wheel/trackpad, keys),
+// never from scroll position, so page-initiated shifts (scroll anchoring when
+// a banner or status line changes size, restoring position after sync) can't
+// hide the button. Momentum keeps the direction of the finger that started it.
+function setFabDir(down) { if (fabScrollDown !== down) { fabScrollDown = down; scheduleFab(); } }
+function fabTouchStart(e) { const t = e.touches && e.touches[0]; if (t) { fabTouchX = t.clientX; fabTouchY = t.clientY; } }
+function fabTouchMove(e) {
+  const t = e.touches && e.touches[0]; if (!t) return;
+  const dx = t.clientX - fabTouchX, dy = t.clientY - fabTouchY;
+  if (Math.abs(dy) < 8 || Math.abs(dy) < Math.abs(dx)) return; // ignore taps and sideways swipes
+  setFabDir(dy < 0); // finger moving up = list scrolling down
+  fabTouchX = t.clientX; fabTouchY = t.clientY;
+}
+function fabWheel(e) { if (e.deltaY > 2) setFabDir(true); else if (e.deltaY < -2) setFabDir(false); }
+function fabKey(e) {
+  const a = document.activeElement;
+  if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT")) return;
+  if (["ArrowDown", "PageDown", "End", " "].includes(e.key)) setFabDir(true);
+  else if (["ArrowUp", "PageUp", "Home"].includes(e.key)) setFabDir(false);
+}
 function bottomBannerHeight() {
   let h = 0;
   ["sync-warning", "storage-warning"].forEach(id => {
@@ -3107,6 +3129,7 @@ function updateFab() {
     && state.editingId == null && !state.isDragging && !state.isSwiping && !typing
     && !(ob && !ob.classList.contains("hidden")));
   if (show) show = input.getBoundingClientRect().bottom < 0; // input fully above the screen
+  if (show && fabScrollDown) show = false; // hidden while scrolling down (reading), back on scroll up
   addFab.classList.toggle("fab-hidden", !show);
   addFab.tabIndex = show ? 0 : -1;
   const bh = bottomBannerHeight();
@@ -3122,7 +3145,7 @@ function initFab() {
   addFab.className = "add-fab fab-hidden";
   addFab.type = "button";
   addFab.setAttribute("aria-label", "Add expense");
-  addFab.textContent = "+";
+  addFab.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg>';
   addFab.addEventListener("click", () => {
     window.scrollTo(0, 0); // instant (no smooth) so focus below stays inside the tap
     const input = document.getElementById("expense-input");
@@ -3131,6 +3154,10 @@ function initFab() {
   });
   document.body.appendChild(addFab);
   window.addEventListener("scroll", scheduleFab, { passive: true });
+  window.addEventListener("touchstart", fabTouchStart, { passive: true });
+  window.addEventListener("touchmove", fabTouchMove, { passive: true });
+  window.addEventListener("wheel", fabWheel, { passive: true });
+  window.addEventListener("keydown", fabKey);
   window.addEventListener("resize", scheduleFab);
   document.addEventListener("focusin", scheduleFab);
   document.addEventListener("focusout", () => setTimeout(scheduleFab, 50));
