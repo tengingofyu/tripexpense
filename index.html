@@ -457,7 +457,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101303;
+const APP_BUILD = 2026101304;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -567,99 +567,45 @@ async function snapshotCloud(cloud, reason) {
   }
 }
 
+// Restore only: make the cloud match this device exactly (after backing it up).
+// Remote deletion records are kept. Every normal push goes through manualSync.
 async function saveToFirebase(opts) {
   if (!currentUser) return;
-  const force = !!(opts && opts.force);
+  if (!(opts && opts.force)) return await manualSync();
   try {
-    const { db, doc, getDoc, setDoc, runTransaction } = window.FB;
-
-    // Safeguard: never push empty/minimal/regressed data over existing cloud data
-    const snap2 = await getDoc(doc(db, "users", currentUser.uid));
-    const cloudAtRead = snap2.exists() ? snap2.data() : null;
-    // Another device wrote since this device last merged: never overwrite
-    // blindly — tell the caller to pull + merge first.
-    if (!force && cloudRevKey(cloudAtRead) !== state.cloudSeenRev) return "stale";
-    if (snap2.exists()) {
-      const cloud = snap2.data();
-      // Remote deletion records are never dropped, even on a forced write
-      state.deletedExpenseIds = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
-
-      // Guard 0 (stale code): never write from a tab running an older build
-      // than the one that last wrote the cloud doc. Firestore rules enforce
-      // this server-side too; this check just gives a clear message.
-      if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
-        console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
-        showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
-        return false;
-      }
-
-      // Guard 1: block if local has significantly fewer TOTAL entries than cloud (>50% loss)
-      const tombG = state.deletedExpenseIds || {};
-      const liveCount = list => (list || []).filter(e => !isTombstoned(e, tombG)).length;
-      const cloudTotal = liveCount(cloud.expenses) + (cloud.pastTrips || []).reduce((s, pt) => s + liveCount(pt.expenses), 0);
-      const localTotal = state.expenses.length + state.pastTrips.reduce((s, pt) => s + (pt.expenses || []).length, 0);
-      if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) {
-        console.error(`SYNC BLOCKED: Local total ${localTotal} entries, cloud total ${cloudTotal}. Refusing to overwrite.`);
-        showSyncWarning("Sync blocked — this device has much less data than the cloud. Tap ⟳ to merge first.");
-        return false;
-      }
-
-      // Guard 2: whole-trip-loss + per-trip count/SGD regression
-      // (the 10 Jul incident: Korea ≈27% of total slipped under Guard 1)
-      const g = syncGuard(cloud);
-      if (g.block) {
-        console.error(`SYNC BLOCKED: ${g.block}. Tap ⟳ Sync to merge with cloud first.`);
-        showSyncWarning("Sync blocked — " + g.block + ". Tap ⟳ to merge with cloud first.");
-        return false;
-      }
-
-      // Snapshot cloud before overwriting: always before a risky (data-reducing)
-      // write, otherwise at most every 30 minutes.
-      const lastSnapAt = loadLocal("last-cloud-snapshot-at", 0);
-      if (g.risky || Date.now() - lastSnapAt > 1800000) {
-        await snapshotCloud(cloud, g.risky ? "pre-risky-write" : "periodic");
-      }
-    }
-
-    const newRev = genId();
+    const { db, doc, runTransaction } = window.FB;
     const userRef = doc(db, "users", currentUser.uid);
-    const expectRev = cloudRevKey(cloudAtRead);
-    // Atomic check-and-write: if any device wrote between our read and now,
-    // the transaction sees a different revision and we merge instead.
+    let snap = null;
     await runTransaction(db, async (tx) => {
       const live = await tx.get(userRef);
-      const liveCloud = live.exists() ? live.data() : null;
-      if (!force && cloudRevKey(liveCloud) !== expectRev) throw { code: "tripexpense/stale" };
+      const cloud = live.exists() ? live.data() : null;
+      if (cloud) {
+        if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) throw { code: "tripexpense/outdated" };
+        state.deletedExpenseIds = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
+        reviveRestored();
+        if ((cloud.cards || []).length > 0 && (!state.cards || state.cards.length === 0)) throw { code: "tripexpense/blocked", why: "all payment cards would be wiped" };
+        const now = Date.now();
+        snap = { takenAt: now, reason: "pre-restore", data: cloud };
+        tx.set(doc(db, "users", currentUser.uid, "snapshots", "snap-" + (Math.floor(now / 1800000) % 5)),
+          { takenAt: now, reason: "pre-restore", appBuild: APP_BUILD, data: JSON.stringify(cloud) });
+      }
       tx.set(userRef, stripUndefined({
-        trip: state.trip,
-        expenses: state.expenses,
-        cards: state.cards,
-        deletedCardIds: state.deletedCardIds,
-        deletedExpenseIds: state.deletedExpenseIds || {},
-        pastTrips: state.pastTrips,
-        updatedAt: Date.now(),
-        appBuild: APP_BUILD,
-        rev: newRev,
+        trip: state.trip, expenses: state.expenses, cards: state.cards,
+        deletedCardIds: state.deletedCardIds, deletedExpenseIds: state.deletedExpenseIds || {},
+        pastTrips: state.pastTrips, updatedAt: Date.now(), appBuild: APP_BUILD, rev: genId(),
       }));
     });
-    state.cloudSeenRev = newRev;
-    saveLocal("cloud-seen-rev", newRev);
-    saveLocal("deleted-expense-ids", state.deletedExpenseIds || {});
-    state.lastSyncAt = Date.now();
-    saveLocal("last-sync-at", state.lastSyncAt);
+    if (snap) { try { const prev = loadLocal("cloud-snapshots", []); prev.unshift(snap); saveLocal("cloud-snapshots", prev.slice(0, 2)); } catch (e) {} saveLocal("last-cloud-snapshot-at", snap.takenAt); }
+    saveAllLocal();
+    state.lastSyncAt = Date.now(); saveLocal("last-sync-at", state.lastSyncAt);
+    showSyncStatus("Restored and synced ✓");
     return true;
-  } catch(e) {
-    if (e && e.code === "tripexpense/stale") return "stale";
-    console.error("Firebase save error:", e);
-    if (!navigator.onLine) {
-      showSyncStatus("Saved locally (offline)");
-    } else if (e && e.code === "permission-denied") {
-      // Rules rejected the write — a newer build wrote the doc after our read,
-      // or this tab's code predates the appBuild rules. Either way: refresh.
-      showSyncWarning("Cloud rejected the write — refresh this tab to get the latest version.");
-    } else {
-      showSyncStatus("Sync failed");
-    }
+  } catch (e) {
+    console.error("Restore push failed:", e);
+    saveAllLocal();
+    if (e && e.code === "tripexpense/outdated") showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
+    else if (e && e.code === "tripexpense/blocked") showSyncWarning("Restore blocked — " + e.why + ".");
+    else showSyncStatus("Restored on this device — cloud not updated, tap ⟳", true);
     return false;
   }
 }
@@ -914,54 +860,10 @@ let pushPending = false;
 async function pushOrSync() {
   if (!currentUser) return false;
   if (syncInFlight) { pushPending = true; return false; }
-  const r = await saveToFirebase();
-  if (r === "stale") return await manualSync({ quiet: true });
-  return r === true;
+  return await manualSync({ auto: true });
 }
 
-async function manualSync(opts) {
-  if (!currentUser) {
-    showSyncStatus("Sign in first to sync");
-    return false;
-  }
-  if (syncInFlight) { pushPending = true; return false; }
-  let result = false;
-  const before = dataFingerprint();
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await syncOnce({ ...(opts || {}), before }, attempt);
-    if (r === "stale") continue; // another device wrote mid-sync: merge again
-    result = r === true;
-    break;
-  }
-  if (pushPending) { pushPending = false; setTimeout(() => pushOrSync(), 300); }
-  return result;
-}
-
-async function syncOnce(opts, attempt) {
-  if (syncInFlight) return false;
-  syncInFlight = true;
-  lastPullAt = Date.now();
-  showSyncStatus("Syncing...", true);
-  const slowTimer = setTimeout(() => showSyncStatus("Still syncing… connection slow or blocked", true), 8000);
-  const before = (opts && opts.before) || dataFingerprint();
-  try {
-    // Load cloud data
-    const { db, doc, getDoc } = window.FB;
-    const snap = await getDoc(doc(db, "users", currentUser.uid));
-    
-    const cloudRev = cloudRevKey(snap.exists() ? snap.data() : null);
-    if (snap.exists()) {
-      const cloud = snap.data();
-      state.deletedExpenseIds = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
-
-      // Stale-code check: don't half-sync from a tab running an older build
-      // than the one that last wrote the cloud doc.
-      if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
-        console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
-        showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
-        return false;
-      }
-
+function mergeCloudIntoState(cloud) {
       // Save original arrays before any merge
       const localExps = [...state.expenses];
       const cloudExps = [...(cloud.expenses || [])];
@@ -1058,55 +960,154 @@ async function syncOnce(opts, attempt) {
           if (reo) state.trip.reopenedAt = reo;
         }
       }
+}
+
+async function manualSync(opts) {
+  if (!currentUser) {
+    showSyncStatus("Sign in first to sync");
+    return false;
+  }
+  if (syncInFlight) { pushPending = true; return false; }
+  let result = false;
+  const before = dataFingerprint();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await syncOnce({ ...(opts || {}), before }, attempt);
+    if (r === "retry") continue; // database was busy (another device saving): try again
+    result = r === true;
+    break;
+  }
+  if (result !== true && !/Couldn|Not synced|blocked|rejected|outdated|failed/i.test((document.getElementById("last-sync") || {}).textContent || "")) {
+    showSyncStatus("Couldn't finish syncing — saved on this device, tap ⟳ to retry", true);
+  }
+  if (pushPending) { pushPending = false; setTimeout(() => pushOrSync(), 300); }
+  return result;
+}
+
+function saveAllLocal() {
+  saveLocal("trip", state.trip);
+  saveLocal("expenses", state.expenses);
+  saveLocal("cards", state.cards);
+  saveLocal("deleted-card-ids", state.deletedCardIds);
+  saveLocal("past-trips", state.pastTrips);
+  saveLocal("deleted-expense-ids", state.deletedExpenseIds || {});
+}
+
+// 13 Oct: one sync = ONE atomic transaction. It always reads the live server
+// copy (never Firestore's local cache), merges it into this device's data,
+// runs every integrity check and safety guard, and writes the result. If any
+// device writes in between, Firestore re-runs it on the fresh copy, so no
+// write can overwrite another. One read + one write per sync.
+let syncGen = 0;
+async function syncOnce(opts, attempt) {
+  if (syncInFlight) return false;
+  syncInFlight = true;
+  lastPullAt = Date.now();
+  const gen = ++syncGen;
+  const say = (m) => { if (gen === syncGen) showSyncStatus(m, true); };
+  say("Syncing… reading");
+  const slowTimer = setTimeout(() => say("Still syncing… connection slow or blocked"), 8000);
+  const before = (opts && opts.before) || dataFingerprint();
+  let healMsg = null;
+  const work = (async () => {
+    const { db, doc, runTransaction } = window.FB;
+    const userRef = doc(db, "users", currentUser.uid);
+    let snap = null;
+    await runTransaction(db, async (tx) => {
+      const live = await tx.get(userRef);
+      const cloud = live.exists() ? live.data() : null;
+      say("Syncing… saving");
+      if (cloud) {
+        if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) throw { code: "tripexpense/outdated" };
+        state.deletedExpenseIds = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
+        mergeCloudIntoState(cloud);
+      }
+      applyTombstones();
+      healMsg = resolveActivePastConflict();
+      cleanMisplacedExpenses();
+      dedupeTrips();
+      snap = null;
+      if (cloud) {
+        // Guard 1: never write a dataset with far fewer live entries than the cloud
+        const tombG = state.deletedExpenseIds || {};
+        const liveCount = list => (list || []).filter(e => !isTombstoned(e, tombG)).length;
+        const cloudTotal = liveCount(cloud.expenses) + (cloud.pastTrips || []).reduce((n, pt) => n + liveCount(pt.expenses), 0);
+        const localTotal = state.expenses.length + state.pastTrips.reduce((n, pt) => n + (pt.expenses || []).length, 0);
+        if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) throw { code: "tripexpense/blocked", why: `this device has ${localTotal} entries, cloud has ${cloudTotal}` };
+        // Guard 2: whole-trip loss / per-trip regressions
+        const g = syncGuard(cloud);
+        if (g.block) throw { code: "tripexpense/blocked", why: g.block };
+        // Backup copy of the cloud before overwriting it (risky writes, or every 30 min)
+        const lastSnapAt = loadLocal("last-cloud-snapshot-at", 0);
+        if (g.risky || Date.now() - lastSnapAt > 1800000) {
+          const now = Date.now();
+          snap = { takenAt: now, reason: g.risky ? "pre-risky-write" : "periodic", data: cloud };
+          tx.set(doc(db, "users", currentUser.uid, "snapshots", "snap-" + (Math.floor(now / 1800000) % 5)),
+            { takenAt: now, reason: snap.reason, appBuild: APP_BUILD, data: JSON.stringify(cloud) });
+        }
+      }
+      tx.set(userRef, stripUndefined({
+        trip: state.trip,
+        expenses: state.expenses,
+        cards: state.cards,
+        deletedCardIds: state.deletedCardIds,
+        deletedExpenseIds: state.deletedExpenseIds || {},
+        pastTrips: state.pastTrips,
+        updatedAt: Date.now(),
+        appBuild: APP_BUILD,
+        rev: genId(),
+      }));
+    });
+    return snap;
+  })();
+  work.catch(() => {}); // a late failure after a timeout must not surface as an unhandled error
+  try {
+    const snap = await Promise.race([work, new Promise((_, rej) => setTimeout(() => rej({ code: "tripexpense/timeout" }), 45000))]);
+    if (snap) {
+      try { const prev = loadLocal("cloud-snapshots", []); prev.unshift(snap); saveLocal("cloud-snapshots", prev.slice(0, 2)); } catch (e) {}
+      saveLocal("last-cloud-snapshot-at", snap.takenAt);
     }
-
-    // Drop entries deleted on any device (unless edited after the delete)
-    applyTombstones();
-    // ─── Data integrity: resolve zombie trips, remove misplaced expenses, dedupe ───
-    const healMsg = resolveActivePastConflict();
-    cleanMisplacedExpenses();
-    dedupeTrips();
+    saveAllLocal();
+    state.lastSyncAt = Date.now();
+    saveLocal("last-sync-at", state.lastSyncAt);
     if (healMsg) showSyncWarning(healMsg);
-    // This device has now merged this exact cloud revision
-    state.cloudSeenRev = cloudRev;
-    saveLocal("cloud-seen-rev", cloudRev);
-    saveLocal("deleted-expense-ids", state.deletedExpenseIds || {});
-
     const pulled = countChanges(before, dataFingerprint());
-
-    // Save merged data locally and push to cloud
-    saveLocal("trip", state.trip);
-    saveLocal("expenses", state.expenses);
-    saveLocal("cards", state.cards);
-    saveLocal("deleted-card-ids", state.deletedCardIds);
-    saveLocal("past-trips", state.pastTrips);
-    // Only render if user isn't actively typing or editing. Render BEFORE the
-    // push so a failure message from saveToFirebase isn't wiped by render().
     const activeEl = document.activeElement;
     const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.value.length > 0;
-    const isEditing = state.editingId != null;
-    const deferred = isTyping || isEditing;
+    const deferred = isTyping || state.editingId != null;
     if (!deferred) render();
-    showSyncStatus("Syncing...", true);
-    const saved = await saveToFirebase();
     clearTimeout(slowTimer);
-    if (saved === "stale") return "stale";
-    // saveToFirebase already showed its own warning on failure — never claim success
-    if (saved !== true) return false;
     let msg = pulled > 0 ? `Synced · ${pulled} change${pulled === 1 ? "" : "s"} pulled` : "Synced · up to date";
     if (pulled > 0 && deferred) msg += " (shows when you finish)";
-    showSyncStatus(msg);
+    if (gen === syncGen) showSyncStatus(msg);
     return true;
-  } catch(e) {
-    console.error("Sync error:", e);
-    if (!navigator.onLine) {
-      showSyncStatus("No network — try again later");
+  } catch (e) {
+    clearTimeout(slowTimer);
+    // Whatever happened, this device's data is a superset (local + anything
+    // merged in) — keeping it locally never loses anything.
+    saveAllLocal();
+    const code = e && e.code;
+    if (code === "tripexpense/outdated") {
+      showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
+      say("Not synced — refresh needed");
+    } else if (code === "tripexpense/blocked") {
+      console.error("SYNC BLOCKED:", e.why);
+      showSyncWarning("Sync blocked — " + e.why + ". Your data on this device is safe.");
+      say("Not synced — blocked for safety");
+    } else if (code === "permission-denied") {
+      console.error("Sync rejected:", e);
+      showSyncWarning("Cloud rejected the write — refresh this tab to get the latest version.");
+      say("Not synced — rejected");
+    } else if (code === "aborted" || code === "failed-precondition") {
+      return "retry";
+    } else if (code === "tripexpense/timeout" || code === "unavailable" || !navigator.onLine) {
+      console.error("Sync could not reach the cloud:", e);
+      say("Couldn't reach the cloud — saved on this device, tap ⟳ to retry");
     } else {
-      showSyncStatus("Sync failed — try again");
+      console.error("Sync error:", e);
+      say("Sync failed — saved on this device, tap ⟳ to retry");
     }
     return false;
   } finally {
-    clearTimeout(slowTimer);
     syncInFlight = false;
   }
 }
