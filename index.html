@@ -466,7 +466,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101308;
+const APP_BUILD = 2026101309;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -3089,26 +3089,28 @@ function formatSyncTime() {
 // Tap = INSTANT jump + focus in the same tap, because iOS only opens the
 // keyboard if focus() happens synchronously inside the user's tap.
 var addFab = null, fabRaf = 0; // var: render() may run before this line executes
-var fabScrollDown = false, fabTouchX = 0, fabTouchY = 0;
-// Direction comes from the user's own input (finger, wheel/trackpad, keys),
-// never from scroll position, so page-initiated shifts (scroll anchoring when
-// a banner or status line changes size, restoring position after sync) can't
-// hide the button. Momentum keeps the direction of the finger that started it.
-function setFabDir(down) { if (fabScrollDown !== down) { fabScrollDown = down; scheduleFab(); } }
-function fabTouchStart(e) { const t = e.touches && e.touches[0]; if (t) { fabTouchX = t.clientX; fabTouchY = t.clientY; } }
-function fabTouchMove(e) {
-  const t = e.touches && e.touches[0]; if (!t) return;
-  const dx = t.clientX - fabTouchX, dy = t.clientY - fabTouchY;
-  if (Math.abs(dy) < 8 || Math.abs(dy) < Math.abs(dx)) return; // ignore taps and sideways swipes
-  setFabDir(dy < 0); // finger moving up = list scrolling down
-  fabTouchX = t.clientX; fabTouchY = t.clientY;
-}
-function fabWheel(e) { if (e.deltaY > 2) setFabDir(true); else if (e.deltaY < -2) setFabDir(false); }
-function fabKey(e) {
-  const a = document.activeElement;
-  if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT")) return;
-  if (["ArrowDown", "PageDown", "End", " "].includes(e.key)) setFabDir(true);
-  else if (["ArrowUp", "PageUp", "Home"].includes(e.key)) setFabDir(false);
+var fabScrollDown = false, fabLastY = 0, fabTouching = false, fabUserUntil = 0;
+// Direction = change in scroll position, counted ONLY while the user is
+// scrolling: finger down, momentum after lifting it, wheel/trackpad, keys.
+// (Build 08 read finger movement instead; iOS Safari stops sending touchmove
+// once native scrolling takes over, so mid-list flicks were missed.)
+// Shifts the page makes on its own (scroll anchoring, restoring position
+// after sync) only rebase. Rubber-band overscroll is clamped out.
+function fabTouchStart() { fabTouching = true; }
+function fabTouchEnd() { fabTouching = false; fabUserUntil = Date.now() + 1000; }
+function fabUserInput() { fabUserUntil = Date.now() + 600; }
+function onFabScroll() {
+  const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const y = Math.min(Math.max(window.scrollY, 0), maxY);
+  const now = Date.now();
+  if (fabTouching || now < fabUserUntil) {
+    if (!fabTouching) fabUserUntil = now + 400; // keep open through momentum
+    if (y > fabLastY + 10) { fabScrollDown = true; fabLastY = y; }
+    else if (y < fabLastY - 10) { fabScrollDown = false; fabLastY = y; }
+  } else {
+    fabLastY = y;
+  }
+  scheduleFab();
 }
 function bottomBannerHeight() {
   let h = 0;
@@ -3153,11 +3155,12 @@ function initFab() {
     updateFab();
   });
   document.body.appendChild(addFab);
-  window.addEventListener("scroll", scheduleFab, { passive: true });
+  window.addEventListener("scroll", onFabScroll, { passive: true });
   window.addEventListener("touchstart", fabTouchStart, { passive: true });
-  window.addEventListener("touchmove", fabTouchMove, { passive: true });
-  window.addEventListener("wheel", fabWheel, { passive: true });
-  window.addEventListener("keydown", fabKey);
+  window.addEventListener("touchend", fabTouchEnd, { passive: true });
+  window.addEventListener("touchcancel", fabTouchEnd, { passive: true });
+  window.addEventListener("wheel", fabUserInput, { passive: true });
+  window.addEventListener("keydown", fabUserInput);
   window.addEventListener("resize", scheduleFab);
   document.addEventListener("focusin", scheduleFab);
   document.addEventListener("focusout", () => setTimeout(scheduleFab, 50));
