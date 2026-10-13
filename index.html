@@ -76,6 +76,14 @@ input[type="number"] { -moz-appearance: textfield; }
 /* 13 Oct: NOT sticky. In a phone browser tab the status-bar height reads as 0,
    so anything pinned to the top slides under the clock. It scrolls with the page. */
 .quick-entry { padding: 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+/* 13 Oct (07): floating + jumps back to the input once it has scrolled away.
+   Kept inside the 480px app column on wide screens; lifted above any bottom banner (JS sets bottom). */
+.add-fab { position: fixed; right: max(16px, calc((100vw - 480px) / 2 + 16px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  width: 56px; height: 56px; border-radius: 50%; border: none; background: var(--accent); color: #fff; font-size: 30px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.45); z-index: 900; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: opacity .15s ease, transform .15s ease; }
+.add-fab.fab-hidden { opacity: 0; transform: scale(0.6); pointer-events: none; }
+#view-expenses { padding-bottom: 72px; } /* last entry never sits under the button */
 .input-row { display: flex; gap: 8px; }
 .main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 16px; outline: none; }
 .main-input:disabled { opacity: 0.5; }
@@ -457,7 +465,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101306;
+const APP_BUILD = 2026101307;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -1304,6 +1312,7 @@ function render() {
     onboardingQueued = true;
     setTimeout(showOnboarding, 400);
   }
+  if (typeof scheduleFab === "function") scheduleFab();
 }
 
 function renderExpenses() {
@@ -3073,7 +3082,66 @@ function formatSyncTime() {
   return ago < 1 ? "Just synced" : ago < 60 ? ago + "m ago" : Math.round(ago/60) + "h ago";
 }
 
+// ─── Floating add button (13 Oct, build 07) ───
+// Shows only when the entry input has scrolled out of view on the Expenses
+// page, and hides while typing/editing/dragging or when a dialog is open.
+// Tap = INSTANT jump + focus in the same tap, because iOS only opens the
+// keyboard if focus() happens synchronously inside the user's tap.
+var addFab = null, fabRaf = 0; // var: render() may run before this line executes
+function bottomBannerHeight() {
+  let h = 0;
+  ["sync-warning", "storage-warning"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.isConnected) h = Math.max(h, el.offsetHeight);
+  });
+  return h;
+}
+function updateFab() {
+  if (!addFab) return;
+  const app = document.getElementById("app");
+  const input = document.getElementById("expense-input");
+  const ob = document.getElementById("onboarding");
+  const a = document.activeElement;
+  const typing = a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT");
+  let show = !!(app && !app.classList.contains("hidden") && state.currentView === "expenses" && input
+    && state.editingId == null && !state.isDragging && !state.isSwiping && !typing
+    && !(ob && !ob.classList.contains("hidden")));
+  if (show) show = input.getBoundingClientRect().bottom < 0; // input fully above the screen
+  addFab.classList.toggle("fab-hidden", !show);
+  addFab.tabIndex = show ? 0 : -1;
+  const bh = bottomBannerHeight();
+  addFab.style.bottom = bh ? (bh + 16) + "px" : "";
+}
+function scheduleFab() {
+  if (fabRaf) return;
+  fabRaf = requestAnimationFrame(() => { fabRaf = 0; updateFab(); });
+}
+function initFab() {
+  if (addFab) return;
+  addFab = document.createElement("button");
+  addFab.className = "add-fab fab-hidden";
+  addFab.type = "button";
+  addFab.setAttribute("aria-label", "Add expense");
+  addFab.textContent = "+";
+  addFab.addEventListener("click", () => {
+    window.scrollTo(0, 0); // instant (no smooth) so focus below stays inside the tap
+    const input = document.getElementById("expense-input");
+    if (input && !input.disabled) input.focus();
+    updateFab();
+  });
+  document.body.appendChild(addFab);
+  window.addEventListener("scroll", scheduleFab, { passive: true });
+  window.addEventListener("resize", scheduleFab);
+  document.addEventListener("focusin", scheduleFab);
+  document.addEventListener("focusout", () => setTimeout(scheduleFab, 50));
+  document.addEventListener("touchend", () => setTimeout(scheduleFab, 150), { passive: true }); // drag/swipe flags clear after 100ms
+  // banners are added/removed outside render(); watch body children
+  new MutationObserver(scheduleFab).observe(document.body, { childList: true });
+  new MutationObserver(scheduleFab).observe(document.getElementById("onboarding"), { attributes: true, attributeFilter: ["class"] });
+}
+
 // Step 1: Load from localStorage immediately and render
+initFab();
 loadState();
 if (!state.trip) { state.currentView = "history"; }
 
