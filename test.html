@@ -457,7 +457,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101302;
+const APP_BUILD = 2026101303;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -630,7 +630,7 @@ async function saveToFirebase(opts) {
       const live = await tx.get(userRef);
       const liveCloud = live.exists() ? live.data() : null;
       if (!force && cloudRevKey(liveCloud) !== expectRev) throw { code: "tripexpense/stale" };
-      tx.set(userRef, {
+      tx.set(userRef, stripUndefined({
         trip: state.trip,
         expenses: state.expenses,
         cards: state.cards,
@@ -640,7 +640,7 @@ async function saveToFirebase(opts) {
         updatedAt: Date.now(),
         appBuild: APP_BUILD,
         rev: newRev,
-      });
+      }));
     });
     state.cloudSeenRev = newRev;
     saveLocal("cloud-seen-rev", newRev);
@@ -896,6 +896,17 @@ function reviveRestored() {
 }
 // Cloud revision key: a write is only allowed as a plain push if the cloud is
 // still exactly the version this device last merged. Otherwise merge first.
+// Firestore rejects undefined anywhere in a document. Drop undefined object
+// fields and turn undefined array slots into null, without touching anything else.
+function stripUndefined(v) {
+  if (Array.isArray(v)) return v.map(x => x === undefined ? null : stripUndefined(x));
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k in v) if (v[k] !== undefined) o[k] = stripUndefined(v[k]);
+    return o;
+  }
+  return v;
+}
 function cloudRevKey(cloud) { return cloud ? (cloud.rev || "__norev__") : "__nodoc__"; }
 
 // Auto-push: push if the cloud is unchanged since our last merge, else full sync.
@@ -987,7 +998,10 @@ async function syncOnce(opts, attempt) {
         });
         const cloudNewer = (pt.endedAt || pt.createdAt || 0) >= (existing.endedAt || existing.createdAt || 0);
         const base = cloudNewer ? { ...existing, ...pt } : { ...pt, ...existing };
-        mergedPastMap[pt.id] = { ...base, expenses: Object.values(merged), parkedAt: Math.max(existing.parkedAt || 0, pt.parkedAt || 0) || undefined };
+        const mergedTrip = { ...base, expenses: Object.values(merged) };
+        const pk = Math.max(existing.parkedAt || 0, pt.parkedAt || 0);
+        if (pk) mergedTrip.parkedAt = pk;
+        mergedPastMap[pt.id] = mergedTrip;
       });
       state.pastTrips = Object.values(mergedPastMap);
 
