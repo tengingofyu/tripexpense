@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
 import { getAnalytics } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-analytics.js';
 
@@ -33,7 +33,7 @@ const auth = getAuth(fbApp);
 try { getAnalytics(fbApp); } catch(e) { /* Analytics not enabled yet */ }
 
 // Expose to global scope for the non-module script
-window.FB = { db, auth, doc, getDoc, setDoc, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
+window.FB = { db, auth, doc, getDoc, setDoc, runTransaction, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
 <style>
 :root {
@@ -457,7 +457,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026100501;
+const APP_BUILD = 2026101303;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -493,7 +493,10 @@ function collectTripStats(trip, expenses, pastTrips) {
 //  - block: human-readable reason the write must be refused
 //  - risky: write is allowed but reduces data somewhere → snapshot cloud first
 function syncGuard(cloud) {
-  const cloudTrips = collectTripStats(cloud.trip, cloud.expenses, cloud.pastTrips);
+  // Entries deliberately deleted (on any device) are not "loss"
+  const tomb = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
+  const keep = list => (list || []).filter(e => !isTombstoned(e, tomb));
+  const cloudTrips = collectTripStats(cloud.trip, keep(cloud.expenses), (cloud.pastTrips || []).map(pt => ({ ...pt, expenses: keep(pt.expenses) })));
   const localTrips = collectTripStats(state.trip, state.expenses, state.pastTrips);
   const localExpIds = new Set();
   Object.values(localTrips).forEach(t => t.ids.forEach(id => localExpIds.add(id)));
@@ -564,15 +567,22 @@ async function snapshotCloud(cloud, reason) {
   }
 }
 
-async function saveToFirebase() {
+async function saveToFirebase(opts) {
   if (!currentUser) return;
+  const force = !!(opts && opts.force);
   try {
-    const { db, doc, getDoc, setDoc } = window.FB;
+    const { db, doc, getDoc, setDoc, runTransaction } = window.FB;
 
     // Safeguard: never push empty/minimal/regressed data over existing cloud data
     const snap2 = await getDoc(doc(db, "users", currentUser.uid));
+    const cloudAtRead = snap2.exists() ? snap2.data() : null;
+    // Another device wrote since this device last merged: never overwrite
+    // blindly — tell the caller to pull + merge first.
+    if (!force && cloudRevKey(cloudAtRead) !== state.cloudSeenRev) return "stale";
     if (snap2.exists()) {
       const cloud = snap2.data();
+      // Remote deletion records are never dropped, even on a forced write
+      state.deletedExpenseIds = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
 
       // Guard 0 (stale code): never write from a tab running an older build
       // than the one that last wrote the cloud doc. Firestore rules enforce
@@ -584,7 +594,9 @@ async function saveToFirebase() {
       }
 
       // Guard 1: block if local has significantly fewer TOTAL entries than cloud (>50% loss)
-      const cloudTotal = (cloud.expenses || []).length + (cloud.pastTrips || []).reduce((s, pt) => s + (pt.expenses || []).length, 0);
+      const tombG = state.deletedExpenseIds || {};
+      const liveCount = list => (list || []).filter(e => !isTombstoned(e, tombG)).length;
+      const cloudTotal = liveCount(cloud.expenses) + (cloud.pastTrips || []).reduce((s, pt) => s + liveCount(pt.expenses), 0);
       const localTotal = state.expenses.length + state.pastTrips.reduce((s, pt) => s + (pt.expenses || []).length, 0);
       if (cloudTotal > 10 && localTotal < cloudTotal * 0.5) {
         console.error(`SYNC BLOCKED: Local total ${localTotal} entries, cloud total ${cloudTotal}. Refusing to overwrite.`);
@@ -609,19 +621,35 @@ async function saveToFirebase() {
       }
     }
 
-    await setDoc(doc(db, "users", currentUser.uid), {
-      trip: state.trip,
-      expenses: state.expenses,
-      cards: state.cards,
-      deletedCardIds: state.deletedCardIds,
-      pastTrips: state.pastTrips,
-      updatedAt: Date.now(),
-      appBuild: APP_BUILD,
+    const newRev = genId();
+    const userRef = doc(db, "users", currentUser.uid);
+    const expectRev = cloudRevKey(cloudAtRead);
+    // Atomic check-and-write: if any device wrote between our read and now,
+    // the transaction sees a different revision and we merge instead.
+    await runTransaction(db, async (tx) => {
+      const live = await tx.get(userRef);
+      const liveCloud = live.exists() ? live.data() : null;
+      if (!force && cloudRevKey(liveCloud) !== expectRev) throw { code: "tripexpense/stale" };
+      tx.set(userRef, stripUndefined({
+        trip: state.trip,
+        expenses: state.expenses,
+        cards: state.cards,
+        deletedCardIds: state.deletedCardIds,
+        deletedExpenseIds: state.deletedExpenseIds || {},
+        pastTrips: state.pastTrips,
+        updatedAt: Date.now(),
+        appBuild: APP_BUILD,
+        rev: newRev,
+      }));
     });
+    state.cloudSeenRev = newRev;
+    saveLocal("cloud-seen-rev", newRev);
+    saveLocal("deleted-expense-ids", state.deletedExpenseIds || {});
     state.lastSyncAt = Date.now();
     saveLocal("last-sync-at", state.lastSyncAt);
     return true;
   } catch(e) {
+    if (e && e.code === "tripexpense/stale") return "stale";
     console.error("Firebase save error:", e);
     if (!navigator.onLine) {
       showSyncStatus("Saved locally (offline)");
@@ -636,13 +664,29 @@ async function saveToFirebase() {
   }
 }
 
-function showSyncStatus(msg) {
+let syncStatusTimer = null;
+function showSyncStatus(msg, sticky) {
   const el = document.getElementById("last-sync");
   if (el) {
     el.textContent = msg;
-    // Revert to time-based text after 3 seconds
-    setTimeout(() => { if (typeof updateUserBar === 'function') updateUserBar(); }, 3000);
+    if (syncStatusTimer) { clearTimeout(syncStatusTimer); syncStatusTimer = null; }
+    // Non-sticky messages revert to time-based text; sticky ones stay until replaced
+    if (!sticky) syncStatusTimer = setTimeout(() => { syncStatusTimer = null; if (typeof updateUserBar === 'function') updateUserBar(); }, 4000);
   }
+}
+// Fingerprint of all expenses + active trip, to count what a pull actually changed
+function dataFingerprint() {
+  const fp = {};
+  (state.expenses || []).forEach(e => { fp[e.id] = JSON.stringify(e); });
+  (state.pastTrips || []).forEach(pt => (pt.expenses || []).forEach(e => { fp[e.id] = JSON.stringify(e); }));
+  fp["__trip"] = state.trip ? state.trip.id : "";
+  return fp;
+}
+function countChanges(a, b) {
+  let n = 0;
+  for (const k in b) if (a[k] !== b[k]) n++;
+  for (const k in a) if (!(k in b)) n++;
+  return n;
 }
 
 function loadState() {
@@ -653,6 +697,9 @@ function loadState() {
   state.pastTrips = loadLocal("past-trips", []);
   state.syncMode = loadLocal("sync-mode", "auto");
   state.lastSyncAt = loadLocal("last-sync-at", null);
+  state.deletedExpenseIds = loadLocal("deleted-expense-ids", {}) || {};
+  state.cloudSeenRev = loadLocal("cloud-seen-rev", "");
+  applyTombstones();
   const healMsg = resolveActivePastConflict();
   cleanMisplacedExpenses();
   dedupeTrips();
@@ -728,10 +775,12 @@ function resolveActivePastConflict() {
 
   const lastLocalEdit = Math.max(
     state.trip.updatedAt || 0,
+    state.trip.reopenedAt || 0,
     ...state.expenses.map(e => e.updatedAt || e.createdAt || 0),
     0
   );
-  const endedTime = past.endedAt || past.createdAt || 0;
+  // parkedAt = when End Trip was last pressed (endedAt is kept from the first end)
+  const endedTime = Math.max(past.parkedAt || 0, past.endedAt || past.createdAt || 0);
 
   if (endedTime >= lastLocalEdit) {
     // Ended copy wins — fold active into past, clear active slot
@@ -793,9 +842,9 @@ function parkActiveTrip() {
       const ex = merged[e.id];
       if (!ex || (e.updatedAt || e.createdAt || 0) >= (ex.updatedAt || ex.createdAt || 0)) merged[e.id] = e;
     });
-    state.pastTrips[idx] = { ...existing, ...t, expenses: Object.values(merged), endedAt: existing.endedAt || t.endedAt || Date.now() };
+    state.pastTrips[idx] = { ...existing, ...t, expenses: Object.values(merged), endedAt: existing.endedAt || t.endedAt || Date.now(), parkedAt: Date.now() };
   } else {
-    state.pastTrips.push({ ...t, expenses: exps, endedAt: t.endedAt || Date.now() });
+    state.pastTrips.push({ ...t, expenses: exps, endedAt: t.endedAt || Date.now(), parkedAt: Date.now() });
   }
   state.trip = null;
   state.expenses = [];
@@ -809,33 +858,108 @@ function persist() {
   saveLocal("cards", state.cards);
   saveLocal("deleted-card-ids", state.deletedCardIds);
   saveLocal("past-trips", state.pastTrips);
+  saveLocal("deleted-expense-ids", state.deletedExpenseIds || {});
   // Auto-sync to Firebase if enabled and signed in
   if (state.syncMode === "auto" && currentUser) {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => saveToFirebase(), 1500);
+    saveTimer = setTimeout(() => pushOrSync(), 1500);
   }
 }
 
-async function manualSync() {
+// ─── Deletion records (tombstones), 13 Oct ───
+// Sync merges by union, so without a record of deletions any device still
+// holding an entry pushes it back. A tombstone {id: deletedAt} travels with
+// the cloud doc; an entry is dropped only if it was deleted AFTER its last
+// edit (an edit made after the delete wins, so nothing edited is ever lost).
+function isTombstoned(e, tomb) {
+  const t = (tomb || state.deletedExpenseIds || {})[e && e.id];
+  return !!t && t >= ((e.updatedAt || e.createdAt || 0));
+}
+function applyTombstones() {
+  const tomb = state.deletedExpenseIds || {};
+  if (!Object.keys(tomb).length) return;
+  state.expenses = (state.expenses || []).filter(e => !isTombstoned(e, tomb));
+  (state.pastTrips || []).forEach(pt => { pt.expenses = (pt.expenses || []).filter(e => !isTombstoned(e, tomb)); });
+}
+function mergeTombstones(a, b) {
+  const out = { ...(a || {}) };
+  for (const k in (b || {})) out[k] = Math.max(out[k] || 0, b[k] || 0);
+  return out;
+}
+// Restored entries must survive their old tombstones: re-stamp them as edited now.
+function reviveRestored() {
+  const tomb = state.deletedExpenseIds || {};
+  const now = Date.now();
+  const revive = e => { if (tomb[e.id]) { e.updatedAt = now; } };
+  (state.expenses || []).forEach(revive);
+  (state.pastTrips || []).forEach(pt => (pt.expenses || []).forEach(revive));
+}
+// Cloud revision key: a write is only allowed as a plain push if the cloud is
+// still exactly the version this device last merged. Otherwise merge first.
+// Firestore rejects undefined anywhere in a document. Drop undefined object
+// fields and turn undefined array slots into null, without touching anything else.
+function stripUndefined(v) {
+  if (Array.isArray(v)) return v.map(x => x === undefined ? null : stripUndefined(x));
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k in v) if (v[k] !== undefined) o[k] = stripUndefined(v[k]);
+    return o;
+  }
+  return v;
+}
+function cloudRevKey(cloud) { return cloud ? (cloud.rev || "__norev__") : "__nodoc__"; }
+
+// Auto-push: push if the cloud is unchanged since our last merge, else full sync.
+let pushPending = false;
+async function pushOrSync() {
+  if (!currentUser) return false;
+  if (syncInFlight) { pushPending = true; return false; }
+  const r = await saveToFirebase();
+  if (r === "stale") return await manualSync({ quiet: true });
+  return r === true;
+}
+
+async function manualSync(opts) {
   if (!currentUser) {
     showSyncStatus("Sign in first to sync");
-    return;
+    return false;
   }
-  showSyncStatus("Syncing...");
+  if (syncInFlight) { pushPending = true; return false; }
+  let result = false;
+  const before = dataFingerprint();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await syncOnce({ ...(opts || {}), before }, attempt);
+    if (r === "stale") continue; // another device wrote mid-sync: merge again
+    result = r === true;
+    break;
+  }
+  if (pushPending) { pushPending = false; setTimeout(() => pushOrSync(), 300); }
+  return result;
+}
+
+async function syncOnce(opts, attempt) {
+  if (syncInFlight) return false;
+  syncInFlight = true;
+  lastPullAt = Date.now();
+  showSyncStatus("Syncing...", true);
+  const slowTimer = setTimeout(() => showSyncStatus("Still syncing… connection slow or blocked", true), 8000);
+  const before = (opts && opts.before) || dataFingerprint();
   try {
     // Load cloud data
     const { db, doc, getDoc } = window.FB;
     const snap = await getDoc(doc(db, "users", currentUser.uid));
     
+    const cloudRev = cloudRevKey(snap.exists() ? snap.data() : null);
     if (snap.exists()) {
       const cloud = snap.data();
+      state.deletedExpenseIds = mergeTombstones(state.deletedExpenseIds, cloud.deletedExpenseIds);
 
       // Stale-code check: don't half-sync from a tab running an older build
       // than the one that last wrote the cloud doc.
       if (typeof cloud.appBuild === "number" && cloud.appBuild > APP_BUILD) {
         console.error(`SYNC BLOCKED: cloud was written by build ${cloud.appBuild}, this tab is ${APP_BUILD}. Refresh the page.`);
         showSyncWarning("This tab is running an outdated version — refresh the page to sync.");
-        return;
+        return false;
       }
 
       // Save original arrays before any merge
@@ -874,7 +998,10 @@ async function manualSync() {
         });
         const cloudNewer = (pt.endedAt || pt.createdAt || 0) >= (existing.endedAt || existing.createdAt || 0);
         const base = cloudNewer ? { ...existing, ...pt } : { ...pt, ...existing };
-        mergedPastMap[pt.id] = { ...base, expenses: Object.values(merged) };
+        const mergedTrip = { ...base, expenses: Object.values(merged) };
+        const pk = Math.max(existing.parkedAt || 0, pt.parkedAt || 0);
+        if (pk) mergedTrip.parkedAt = pk;
+        mergedPastMap[pt.id] = mergedTrip;
       });
       state.pastTrips = Object.values(mergedPastMap);
 
@@ -926,16 +1053,26 @@ async function manualSync() {
       } else if (state.trip && cloud.trip && state.trip.id === cloud.trip.id) {
         // Same trip — expenses already merged above
         if ((cloud.trip.updatedAt || cloud.trip.createdAt || 0) > (state.trip.updatedAt || state.trip.createdAt || 0)) {
-          state.trip = cloud.trip;
+          const reo = Math.max(state.trip.reopenedAt || 0, cloud.trip.reopenedAt || 0);
+          state.trip = { ...cloud.trip };
+          if (reo) state.trip.reopenedAt = reo;
         }
       }
     }
 
+    // Drop entries deleted on any device (unless edited after the delete)
+    applyTombstones();
     // ─── Data integrity: resolve zombie trips, remove misplaced expenses, dedupe ───
     const healMsg = resolveActivePastConflict();
     cleanMisplacedExpenses();
     dedupeTrips();
     if (healMsg) showSyncWarning(healMsg);
+    // This device has now merged this exact cloud revision
+    state.cloudSeenRev = cloudRev;
+    saveLocal("cloud-seen-rev", cloudRev);
+    saveLocal("deleted-expense-ids", state.deletedExpenseIds || {});
+
+    const pulled = countChanges(before, dataFingerprint());
 
     // Save merged data locally and push to cloud
     saveLocal("trip", state.trip);
@@ -943,15 +1080,23 @@ async function manualSync() {
     saveLocal("cards", state.cards);
     saveLocal("deleted-card-ids", state.deletedCardIds);
     saveLocal("past-trips", state.pastTrips);
-    await saveToFirebase();
-    // Only render if user isn't actively typing or editing
+    // Only render if user isn't actively typing or editing. Render BEFORE the
+    // push so a failure message from saveToFirebase isn't wiped by render().
     const activeEl = document.activeElement;
     const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.value.length > 0;
     const isEditing = state.editingId != null;
-    if (!isTyping && !isEditing) {
-      render();
-    }
-    showSyncStatus("Synced ✓");
+    const deferred = isTyping || isEditing;
+    if (!deferred) render();
+    showSyncStatus("Syncing...", true);
+    const saved = await saveToFirebase();
+    clearTimeout(slowTimer);
+    if (saved === "stale") return "stale";
+    // saveToFirebase already showed its own warning on failure — never claim success
+    if (saved !== true) return false;
+    let msg = pulled > 0 ? `Synced · ${pulled} change${pulled === 1 ? "" : "s"} pulled` : "Synced · up to date";
+    if (pulled > 0 && deferred) msg += " (shows when you finish)";
+    showSyncStatus(msg);
+    return true;
   } catch(e) {
     console.error("Sync error:", e);
     if (!navigator.onLine) {
@@ -959,8 +1104,26 @@ async function manualSync() {
     } else {
       showSyncStatus("Sync failed — try again");
     }
+    return false;
+  } finally {
+    clearTimeout(slowTimer);
+    syncInFlight = false;
   }
 }
+
+// Pull automatically when the app returns to the foreground (auto-sync mode only)
+let syncInFlight = false;
+let lastPullAt = 0;
+function foregroundPull() {
+  if (document.visibilityState !== "visible") return;
+  if (!currentUser || state.syncMode !== "auto" || syncInFlight) return;
+  if (Date.now() - lastPullAt < 30000) return;
+  const a = document.activeElement;
+  if (state.editingId != null || (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA") && a.value.length > 0)) return;
+  manualSync();
+}
+document.addEventListener("visibilitychange", foregroundPull);
+window.addEventListener("pageshow", foregroundPull);
 
 // ─── Helpers ───────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -1597,6 +1760,8 @@ function deleteExpense(id) {
   state.deletedIds[id] = true;
   if (deleteTimers[id]) clearTimeout(deleteTimers[id]);
   deleteTimers[id] = setTimeout(() => {
+    if (!state.deletedExpenseIds) state.deletedExpenseIds = {};
+    state.deletedExpenseIds[id] = Date.now();
     state.expenses = state.expenses.filter(e => e.id !== id);
     delete state.deletedIds[id]; delete deleteTimers[id];
     persist(); render();
@@ -2317,11 +2482,14 @@ function renderCards() {
           state.cards = (s.data.cards && s.data.cards.length) ? s.data.cards : state.cards;
           state.deletedCardIds = s.data.deletedCardIds || state.deletedCardIds || [];
           state.pastTrips = s.data.pastTrips || [];
+          reviveRestored();
           resolveActivePastConflict();
           cleanMisplacedExpenses();
           dedupeTrips();
-          persist();
-          const ok = await saveToFirebase();
+          if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+          saveLocal("trip", state.trip); saveLocal("expenses", state.expenses); saveLocal("cards", state.cards);
+          saveLocal("deleted-card-ids", state.deletedCardIds); saveLocal("past-trips", state.pastTrips);
+          const ok = await saveToFirebase({ force: true });
           render();
           showSyncWarning(ok === false ? "Restored locally — cloud push was blocked; tap ⟳ to retry." : "Snapshot restored. All your devices will pick it up on next sync (sign out/in on phones if needed).");
         } catch (e) {
@@ -2415,11 +2583,14 @@ function renderCards() {
       if (data.pastTrips) state.pastTrips = data.pastTrips;
       // 17 Jul: a restored backup can itself carry a zombie (trip both active
       // and in pastTrips) — resolve before persisting/syncing it anywhere.
+      reviveRestored();
       resolveActivePastConflict();
       cleanMisplacedExpenses();
       dedupeTrips();
       state.showRestore = false;
       persist(); render();
+      // Restore means "make the cloud match this backup", not "merge with it"
+      if (currentUser) { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; } saveToFirebase({ force: true }); }
       if(st) { st.textContent="Restored!"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},2500); }
     } catch(e) { if(st) { st.textContent=e.message || "Invalid backup data"; st.className="backup-status"; setTimeout(()=>{st.textContent="";},4000); } }
   });
@@ -2435,6 +2606,7 @@ function renderCards() {
     b.addEventListener("click", () => {
       if (state.trip) {
         state.trip.groupSize = parseInt(b.dataset.changeGs);
+        state.trip.updatedAt = Date.now();
         persist(); render();
       }
     });
@@ -2464,7 +2636,7 @@ function renderHistory() {
         // Carry the FULL trip object (dateFormat, endedAt, etc.) — 12 Jul fix:
         // dropping fields corrupted date parsing and rewrote endedAt on re-park.
         const { expenses: _reopenExps, ...tripMeta } = pt;
-        state.trip = { ...tripMeta, groupSize: pt.groupSize || 1 };
+        state.trip = { ...tripMeta, groupSize: pt.groupSize || 1, reopenedAt: Date.now() };
         state.expenses = pt.expenses || [];
         state.pastTrips = state.pastTrips.filter(p=>p.id!==pt.id);
         state.isHistorical = true;
@@ -2780,7 +2952,7 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   // sign-out within the debounce window (or in manual mode) destroyed them.
   let flushed = false;
   if (navigator.onLine && currentUser) {
-    try { flushed = (await saveToFirebase()) === true; } catch(e) { flushed = false; }
+    try { flushed = (await manualSync()) === true; } catch(e) { flushed = false; }
   }
   if (!flushed && !confirm("Couldn't sync your latest changes to the cloud. Sign out anyway? Unsynced changes on this device will be lost.")) return;
   const { auth, signOut } = window.FB;
@@ -2794,6 +2966,10 @@ document.getElementById("signout-btn")?.addEventListener("click", async () => {
   localStorage.removeItem("tengtrip-last-sync-at");
   localStorage.removeItem("tengtrip-cloud-snapshots");
   localStorage.removeItem("tengtrip-last-cloud-snapshot-at");
+  localStorage.removeItem("tengtrip-deleted-expense-ids");
+  localStorage.removeItem("tengtrip-cloud-seen-rev");
+  state.deletedExpenseIds = {};
+  state.cloudSeenRev = "";
   // Reset state
   currentUser = null;
   state.trip = null;
