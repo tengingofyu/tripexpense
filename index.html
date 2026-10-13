@@ -53,7 +53,6 @@ window.FB = { db, auth, doc, getDoc, setDoc, runTransaction, signInWithPopup, Go
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: min(480px, 100vw); margin: 0 auto; padding-bottom: 40px; overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-top: env(safe-area-inset-top); }
-.statusbar-cover { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 100; }
 input, select, textarea, button { font-family: inherit; }
 /* iOS zooms any focused field under 16px and does not zoom back out */
 input, select, textarea { font-size: 16px !important; }
@@ -74,7 +73,9 @@ input[type="number"] { -moz-appearance: textfield; }
 .nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Quick Entry */
-.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: var(--bg); }
+/* 13 Oct: NOT sticky. In a phone browser tab the status-bar height reads as 0,
+   so anything pinned to the top slides under the clock. It scrolls with the page. */
+.quick-entry { padding: 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .input-row { display: flex; gap: 8px; }
 .main-input { flex: 1; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 16px; outline: none; }
 .main-input:disabled { opacity: 0.5; }
@@ -309,7 +310,6 @@ input[type="number"] { -moz-appearance: textfield; }
 
 
 <div id="app" class="hidden">
-  <div class="statusbar-cover"></div>
   <!-- User info -->
   <div class="user-info" id="user-info-bar">
     <span id="user-email"></span>
@@ -419,7 +419,7 @@ function showStorageWarning() {
   storageWarningShown = true;
   const bar = document.createElement("div");
   bar.id = "storage-warning";
-  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2000;background:#7a1f1f;color:#fff;font-size:12px;padding:10px 14px;text-align:center;line-height:1.4;";
+  bar.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:2001;background:#7a1f1f;color:#fff;font-size:13px;padding:12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px);text-align:center;line-height:1.4;box-shadow:0 -2px 12px rgba(0,0,0,.4);";
   bar.innerHTML = 'Storage full — changes are NOT being saved. Export a Backup now (Settings), then delete old trips or free up space. <button id="storage-warning-close" style="margin-left:8px;background:none;border:1px solid #fff;border-radius:4px;color:#fff;font-size:11px;padding:2px 8px;cursor:pointer;">Dismiss</button>';
   document.body.appendChild(bar);
   document.getElementById("storage-warning-close")?.addEventListener("click", () => {
@@ -442,7 +442,7 @@ function showSyncWarning(msg) {
   syncWarningShown = true;
   const bar = document.createElement("div");
   bar.id = "sync-warning";
-  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2000;background:#7a4a1f;color:#fff;font-size:12px;padding:10px 14px;text-align:center;line-height:1.4;";
+  bar.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:2000;background:#7a4a1f;color:#fff;font-size:13px;padding:12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px);text-align:center;line-height:1.4;box-shadow:0 -2px 12px rgba(0,0,0,.4);";
   bar.innerHTML = '<span id="sync-warning-msg"></span> <button id="sync-warning-close" style="margin-left:8px;background:none;border:1px solid #fff;border-radius:4px;color:#fff;font-size:11px;padding:2px 8px;cursor:pointer;">Dismiss</button>';
   document.body.appendChild(bar);
   const m = document.getElementById("sync-warning-msg");
@@ -457,7 +457,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101304;
+const APP_BUILD = 2026101306;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -2878,24 +2878,37 @@ function initSwipeToDelete() {
     const id = container.dataset.swipe;
     const item = container.querySelector(".expense-item");
     if (!item) return;
-    let startX = 0, currentX = 0, swiping = false;
+    let startX = 0, startY = 0, currentX = 0, swiping = false, axis = null;
 
-    function onStart(clientX) {
-      startX = clientX; currentX = 0; swiping = true;
+    function onStart(clientX, clientY) {
+      startX = clientX; startY = clientY || 0; currentX = 0; swiping = true; axis = null;
       item.style.transition = "none";
     }
-    function onMove(clientX) {
+    function onMove(clientX, clientY) {
       if (!swiping) return;
-      currentX = clientX - startX;
-      if (currentX > 0) currentX = 0; // Only allow left swipe
+      const dx = clientX - startX, dy = (clientY || 0) - startY;
+      // 13 Oct: decide once whether this gesture is a sideways swipe or a scroll.
+      // A scroll must never move the row (it used to leave rows half-swiped).
+      if (!axis) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        axis = Math.abs(dx) > Math.abs(dy) * 1.5 ? "x" : "y";
+      }
+      if (axis !== "x") return;
+      currentX = dx > 0 ? 0 : dx; // Only allow left swipe
       item.style.transform = "translateX(" + currentX + "px)";
       state.isSwiping = Math.abs(currentX) > 10;
+    }
+    function snapBack() {
+      swiping = false; axis = null; currentX = 0;
+      item.style.transition = "transform 0.25s ease";
+      item.style.transform = "translateX(0)";
+      setTimeout(() => { state.isSwiping = false; }, 100);
     }
     function onEnd() {
       if (!swiping) return;
       swiping = false;
       item.style.transition = "transform 0.25s ease";
-      if (currentX < -THRESHOLD) {
+      if (axis === "x" && currentX < -THRESHOLD) {
         // Swipe past threshold — delete
         item.style.transform = "translateX(-100%)";
         setTimeout(() => deleteExpense(id), 250);
@@ -2909,19 +2922,21 @@ function initSwipeToDelete() {
     // Touch
     item.addEventListener("touchstart", (ev) => {
       if (ev.target.classList.contains("drag-handle")) return;
-      onStart(ev.touches[0].clientX);
+      onStart(ev.touches[0].clientX, ev.touches[0].clientY);
     }, { passive: true });
     item.addEventListener("touchmove", (ev) => {
       if (state.isDragging) return;
-      onMove(ev.touches[0].clientX);
+      onMove(ev.touches[0].clientX, ev.touches[0].clientY);
     }, { passive: true });
     item.addEventListener("touchend", onEnd);
+    // iOS cancels the touch when it takes over for scrolling: always snap back, never delete
+    item.addEventListener("touchcancel", snapBack);
 
     // Mouse
     item.addEventListener("mousedown", (ev) => {
       if (ev.target.classList.contains("drag-handle")) return;
-      onStart(ev.clientX);
-      const onMouseMove = (e) => { if (state.isDragging) return; onMove(e.clientX); };
+      onStart(ev.clientX, ev.clientY);
+      const onMouseMove = (e) => { if (state.isDragging) return; onMove(e.clientX, e.clientY); };
       const onMouseUp = () => { onEnd(); document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
