@@ -466,7 +466,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101309;
+const APP_BUILD = 2026101501;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -1503,7 +1503,7 @@ function bindExpenseEvents() {
   if (input) {
     input.addEventListener("input", () => updatePreview(input.value));
     input.addEventListener("keydown", (ev) => { if (ev.key==="Enter") { ev.preventDefault(); submitExpense(input.value); } });
-    input.addEventListener("focus", () => { setTimeout(() => { if (document.activeElement === input) input.scrollIntoView({ behavior:"smooth", block:"nearest" }); }, 300); });
+    input.addEventListener("focus", () => keepEntryAtTop(input));
   }
   const cy = document.getElementById("claim-yes");
   const cn = document.getElementById("claim-no");
@@ -3081,6 +3081,33 @@ function formatSyncTime() {
   if (!state.lastSyncAt) return "Not synced";
   const ago = Math.round((Date.now() - state.lastSyncAt) / 60000);
   return ago < 1 ? "Just synced" : ago < 60 ? ago + "m ago" : Math.round(ago/60) + "h ago";
+}
+
+// ─── Keyboard shift guard (15 Oct, build 10) ───
+// When the keyboard opens, iOS may shift the page up on its own, pushing the
+// header under the clock. For the ~0.8s the keyboard takes to appear, put the
+// page back at the very top, but only if the entry box still fits above the
+// keyboard (else just bring the box into view, e.g. landscape). After that
+// window we stop, so the user can still scroll the list while typing.
+function keepEntryAtTop(input) {
+  const vv = window.visualViewport;
+  const started = Date.now();
+  const fix = () => {
+    if (document.activeElement !== input || Date.now() - started > 800) return;
+    const visibleH = vv ? vv.height : window.innerHeight;
+    const boxBottom = input.getBoundingClientRect().bottom + window.scrollY; // position on the page at scroll 0
+    if (boxBottom + 60 <= visibleH) { // 60 = room for the preview line under the box
+      if (window.scrollY !== 0 || (vv && vv.offsetTop !== 0)) window.scrollTo(0, 0);
+    } else {
+      input.scrollIntoView({ block: "nearest" });
+    }
+  };
+  [0, 80, 200, 350, 550, 800].forEach(ms => setTimeout(fix, ms));
+  if (vv) {
+    vv.addEventListener("resize", fix);
+    vv.addEventListener("scroll", fix);
+    setTimeout(() => { vv.removeEventListener("resize", fix); vv.removeEventListener("scroll", fix); }, 850);
+  }
 }
 
 // ─── Floating add button (13 Oct, build 07) ───
