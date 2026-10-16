@@ -466,7 +466,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101501;
+const APP_BUILD = 2026101601;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -1316,12 +1316,22 @@ function render() {
   if (typeof scheduleFab === "function") scheduleFab();
 }
 
+// 16 Oct: one ordering rule everywhere, identical on every device.
+// Lower sortOrder first; ties (old data, simultaneous adds) -> newest added
+// first, then id. Order changes only ever touch the entry that moved, and that
+// entry gets a fresh updatedAt, so sync carries the move instead of reverting it.
+function dayOrderCmp(a, b) {
+  return ((a.sortOrder || 0) - (b.sortOrder || 0))
+    || ((b.createdAt || 0) - (a.createdAt || 0))
+    || String(a.id).localeCompare(String(b.id));
+}
+
 function renderExpenses() {
   const t = state.trip; if (!t) return;
   const c = t.currency;
   // Group by date
   const grouped = {};
-  const sorted = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || (a.sortOrder||0) - (b.sortOrder||0));
+  const sorted = [...state.expenses].sort((a,b) => b.date.localeCompare(a.date) || dayOrderCmp(a, b));
   sorted.forEach(e => { if (!grouped[e.date]) grouped[e.date]=[]; grouped[e.date].push(e); });
 
   let html = '';
@@ -1720,13 +1730,15 @@ function submitExpense(val) {
   const p = state.lastPreview || parseInput(val, state.cards, state.trip);
   if (!p || (!p.amount && !p.isSgdOnly)) return;
   const expDate = p.parsedDate || todayStr();
-  // Shift existing entries for this date down to make room at top
-  state.expenses.filter(e => e.date === expDate).forEach(e => { e.sortOrder = (e.sortOrder || 0) + 1; });
+  // New entry goes above the current top. Other entries are NOT touched
+  // (shifting them without a new updatedAt is what sync used to revert).
+  const sameDay = state.expenses.filter(e => e.date === expDate);
+  const topOrder = sameDay.length ? Math.min(...sameDay.map(e => e.sortOrder || 0)) - 1 : 0;
   const expense = {
     id: genId(), date: expDate, amount: p.isSgdOnly ? 0 : p.amount, sgdAmount: p.sgdAmount,
     currency: state.trip.currency, description: p.description,
     card: p.card ? p.card.id : null, cardName: p.card ? p.card.name : "Unknown",
-    category: p.category, claimable: false, createdAt: Date.now(), updatedAt: Date.now(), sortOrder: 0,
+    category: p.category, claimable: false, createdAt: Date.now(), updatedAt: Date.now(), sortOrder: topOrder,
     isSgdOnly: p.isSgdOnly || false,
   };
   state.lastPreview = null;
@@ -1787,7 +1799,7 @@ function undoDelete(id) {
 async function generateExcel() {
   const t = state.trip;
   const c = t.currency;
-  const exps = state.expenses.filter(e => !state.deletedIds[e.id]).sort((a,b) => a.date.localeCompare(b.date) || (a.sortOrder||0) - (b.sortOrder||0)); // 12 Jul: exclude undo-window deletes
+  const exps = state.expenses.filter(e => !state.deletedIds[e.id]).sort((a,b) => a.date.localeCompare(b.date) || dayOrderCmp(a, b)); // 12 Jul: exclude undo-window deletes
   const isWork = t.type === "work";
   const isGroup = isGroupTrip(t);
   const isZero = ZERO_DECIMAL.has(c);
@@ -2053,7 +2065,7 @@ async function generateExcel() {
       cell.border = thinBorder;
     });
 
-    sharedExps.sort((a,b) => a.date.localeCompare(b.date)).forEach((e, i) => {
+    sharedExps.sort((a,b) => a.date.localeCompare(b.date) || dayOrderCmp(a, b)).forEach((e, i) => {
       const gs = e.splitCount || getGroupSize(t);
       const dispAmt = isSgdOnlyEntry(e) ? (e.sgdAmount||0) : e.amount;
       const isCustom = e.myShare != null;
@@ -2086,7 +2098,7 @@ async function generateExcel() {
       cell.fill = hdrFill;
       cell.border = thinBorder;
     });
-    claimExps.sort((a,b) => b.date.localeCompare(a.date)).forEach((e, i) => {
+    claimExps.sort((a,b) => b.date.localeCompare(a.date) || dayOrderCmp(a, b)).forEach((e, i) => {
       const row = ws3.addRow([e.date, e.description, isSgdOnlyEntry(e)?0:e.amount, e.sgdAmount||0, e.cardName||'']);
       row.eachCell(cell => { cell.font = regFont; cell.border = thinBorder; });
       row.getCell(3).numFmt = cFmt;
@@ -2262,7 +2274,7 @@ function renderDashboard() {
       // Line items
       const sharedDates = [...new Set(sharedExps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
       sharedDates.forEach(date => {
-        const dayShared = sharedExps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+        const dayShared = sharedExps.filter(e => e.date === date).sort(dayOrderCmp);
         h += `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-top:8px;">${formatDate(date)}</div>`;
         dayShared.forEach(e => {
           const gs = Number(e.splitCount) || getGroupSize(state.trip);
@@ -2314,7 +2326,7 @@ function renderDashboard() {
     const dates = [...new Set(exps.map(e => e.date))].sort((a,b) => b.localeCompare(a));
     dates.forEach(date => {
       text += `${formatDate(date)}\n`;
-      exps.filter(e => e.date === date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).forEach(e => {
+      exps.filter(e => e.date === date).sort(dayOrderCmp).forEach(e => {
         const splitN = e.splitCount || gs;
         const myShare = getMyShare(e, state.trip);
         const isCustom = e.myShare != null;
@@ -2850,32 +2862,34 @@ function initDragAndDrop() {
 }
 
 function reorderExpense(draggedId, targetId, targetDate, insertAfter) {
-  const dateExps = state.expenses.filter(e => e.date === targetDate).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
   const draggedExp = state.expenses.find(e => e.id === draggedId);
   if (!draggedExp) return;
-
-  // Remove dragged from its current position
-  const filtered = dateExps.filter(e => e.id !== draggedId);
-  // Find target index
-  const targetIdx = filtered.findIndex(e => e.id === targetId);
-  // Insert before or after target
-  if (insertAfter) {
-    filtered.splice(targetIdx + 1, 0, draggedExp);
-  } else {
-    filtered.splice(targetIdx, 0, draggedExp);
-  }
-
-  // Update date and sortOrder
+  // Day as currently shown, without the dragged entry
+  const list = state.expenses.filter(e => e.date === targetDate && e.id !== draggedId).sort(dayOrderCmp);
+  let idx = list.findIndex(e => e.id === targetId);
+  if (idx < 0) idx = list.length; else if (insertAfter) idx += 1;
+  const prev = list[idx - 1], next = list[idx];
+  const now = Date.now();
+  const so = e => e.sortOrder || 0;
   draggedExp.date = targetDate;
-  draggedExp.updatedAt = Date.now(); // 12 Jul fix: without this, next sync reverts the move
-  filtered.forEach((e, i) => { e.sortOrder = i; });
+  draggedExp.updatedAt = now;
+  if (!prev && !next) draggedExp.sortOrder = 0;
+  else if (!prev) draggedExp.sortOrder = so(next) - 1;
+  else if (!next) draggedExp.sortOrder = so(prev) + 1;
+  else if (so(prev) < so(next)) draggedExp.sortOrder = (so(prev) + so(next)) / 2; // only the moved entry changes
+  else {
+    // Neighbours share a position (older data): renumber the day once, and
+    // stamp every entry whose position changed so sync keeps the new order.
+    list.splice(idx, 0, draggedExp);
+    list.forEach((e, i) => { if (e === draggedExp || so(e) !== i) { e.sortOrder = i; e.updatedAt = now; } });
+  }
   persist(); render();
 }
 
 function moveExpenseToDate(draggedId, targetDate) {
   const draggedExp = state.expenses.find(e => e.id === draggedId);
   if (!draggedExp) return;
-  const dateExps = state.expenses.filter(e => e.date === targetDate && e.id !== draggedId).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+  const dateExps = state.expenses.filter(e => e.date === targetDate && e.id !== draggedId);
   draggedExp.date = targetDate;
   draggedExp.updatedAt = Date.now(); // 12 Jul fix: without this, next sync reverts the move
   draggedExp.sortOrder = dateExps.length ? Math.max(...dateExps.map(e => e.sortOrder||0)) + 1 : 0;
