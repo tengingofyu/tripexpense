@@ -466,7 +466,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026101601;
+const APP_BUILD = 2026101801;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
@@ -1314,6 +1314,30 @@ function render() {
     setTimeout(showOnboarding, 400);
   }
   if (typeof scheduleFab === "function") scheduleFab();
+}
+
+// 18 Oct: cash-rate placeholders. Use this trip's own rate (median of entries
+// that have both amounts) to suggest a round cash amount worth ~SGD 300.
+// No rate yet -> a typical cash amount for the currency, generic SGD hint.
+function niceRound(x) {
+  if (!(x > 0)) return 0;
+  const mag = Math.pow(10, Math.floor(Math.log10(x)));
+  const step = mag / 2;
+  return Math.max(step, Math.round(x / step) * step);
+}
+function cashExample(cur) {
+  const fmt = n => String(Math.round(Number(n))); // no separators: the box only accepts plain digits
+  const rates = (state.expenses || [])
+    .filter(e => !isSgdOnlyEntry(e) && Number(e.amount) > 0 && Number(e.sgdAmount) > 0)
+    .map(e => Number(e.sgdAmount) / Number(e.amount)).sort((a, b) => a - b);
+  if (rates.length) {
+    const rate = rates[Math.floor(rates.length / 2)];
+    const foreign = niceRound(300 / rate);
+    return { foreign: "e.g. " + fmt(foreign), sgd: "e.g. " + fmt(Math.round(foreign * rate)) };
+  }
+  const typical = { USD: 200, EUR: 200, GBP: 150, AUD: 300, NZD: 300, CAD: 300, CHF: 200, JPY: 30000, KRW: 300000,
+    CNY: 1000, HKD: 1500, TWD: 5000, THB: 5000, MYR: 500, IDR: 3000000, VND: 5000000, PHP: 10000, INR: 15000 };
+  return { foreign: "e.g. " + fmt(typical[cur] || 200), sgd: "SGD you paid" };
 }
 
 // 16 Oct: one ordering rule everywhere, identical on every device.
@@ -2385,12 +2409,15 @@ function renderCards() {
     const cashEntries = state.expenses.filter(e => e.cardName === "Cash" && !isSgdOnlyEntry(e));
     if (cashEntries.length > 0) {
     h += `<div class="backup-section"><h3 class="section-title">SGD → ${esc(cur)} (Cash)</h3>`;
-    h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${esc(cur)} cash you bought and the SGD you paid. Applies that rate to all ${cashEntries.length} cash entries.</div>`;
+    h += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Enter how much ${esc(cur)} cash you bought and the SGD you paid. Applies that rate to ${cashEntries.length === 1 ? 'your 1 cash entry' : 'all ' + cashEntries.length + ' cash entries'}.</div>`;
     h += '<div style="display:flex;flex-direction:column;gap:12px;">';
-    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">${esc(cur)} received</label><input class="edit-input" id="cash-foreign" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 500000" style="flex:1;min-width:0;"></div>`;
-    h += `<div class="edit-row" style="gap:10px;"><label style="font-size:12px;width:100px;flex-shrink:0;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 540" style="flex:1;min-width:0;"></div>`;
+    const ex = cashExample(cur);
+    // 18 Oct: fixed two-column grid so both boxes line up; examples scaled to this trip's currency
+    const row = 'display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;align-items:center;';
+    h += `<div style="${row}"><label for="cash-foreign" style="font-size:12px;">${esc(cur)} received</label><input class="edit-input" id="cash-foreign" type="number" inputmode="decimal" step="0.01" placeholder="${esc(ex.foreign)}" style="width:100%;box-sizing:border-box;"></div>`;
+    h += `<div style="${row}"><label for="cash-sgd" style="font-size:12px;">SGD paid</label><input class="edit-input" id="cash-sgd" type="number" inputmode="decimal" step="0.01" placeholder="${esc(ex.sgd)}" style="width:100%;box-sizing:border-box;"></div>`;
     h += '</div>';
-    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${Number(cashEntries.length)} Cash Entries</button>`;
+    h += `<button class="save-cards-btn" id="apply-cash-rate" style="margin-top:12px;">Apply to ${Number(cashEntries.length)} Cash ${cashEntries.length === 1 ? "Entry" : "Entries"}</button>`;
     h += '<div id="cash-rate-msg" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>';
     h += '</div>';
     }
