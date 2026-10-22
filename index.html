@@ -57,7 +57,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
    web apps ("Liquid Glass" edge effect). Start the page that much lower, on top of
    the status-bar space, so the blur falls on empty background. Home-screen app on
    iPhone/iPad only; Safari tabs, Android and laptops are unchanged. */
-html.ios-edge-blur body { padding-top: calc(env(safe-area-inset-top, 0px) + 48px); }
+html.ios-edge-blur body { padding-top: calc(env(safe-area-inset-top, 0px) + 36px); } /* 22 Oct: 48 -> 36, measured from Teng's screenshots: blur fades out ~96pt from screen top */
 input, select, textarea, button { font-family: inherit; }
 /* iOS zooms any focused field under 16px and does not zoom back out */
 input, select, textarea { font-size: 16px !important; }
@@ -471,7 +471,7 @@ function showSyncWarning(msg) {
 // Bump this on EVERY deploy. Format: YYYYMMDDNN (NN = same-day sequence).
 // Firestore rules enforce appBuild >= existing, so a stale tab running old
 // cached code (which writes a lower/missing appBuild) is rejected server-side.
-const APP_BUILD = 2026102001;
+const APP_BUILD = 2026102201;
 
 // Collect per-trip stats {name, count, sgdCount, ids} keyed by trip id.
 function collectTripStats(trip, expenses, pastTrips) {
